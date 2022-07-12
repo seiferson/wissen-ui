@@ -1,0 +1,4367 @@
+ChartComponent.jsx
+-------------------------------------------------------
+
+import React, {Component, Fragment} from 'react';
+
+class ChartComponent extends Component {
+
+    constructor(props) {
+        super(props);
+
+        this.chartRef = React.createRef();
+    }
+
+    componentDidMount() {
+        this.chartObj = new Chart(this.chartRef.current, {
+            type: this.props.type,
+            data: this.props.data,
+            options: {scales: {yAxes: [{ticks: {beginAtZero: true}}]}}
+        });
+      }
+
+    componentDidUpdate() {
+        this.chartObj.data = this.props.data;
+        this.chartObj.type = this.props.type;
+        this.chartObj.update();
+    }
+
+    render() {
+        return (
+            <canvas ref={this.chartRef}/>
+        );
+    }
+}
+
+export default ChartComponent;
+
+-------------------------------------------------------
+
+
+CodeCamp.jsx
+-------------------------------------------------------
+
+import React, {Component, Fragment} from 'react';
+
+class CodeCamp extends Component{
+
+    constructor(props) {
+        super(props);
+
+        this.state = {
+            output : ""
+        }
+    }
+
+    time(that, params) {
+        that.setState({'output': that.state.output + new Date() + '\n'});
+    }
+
+    clear(that, params) {
+        that.setState({'output': ''});
+    }
+
+    access(that, params) {
+        console.log(params)
+        var tokens = params.split(/\s+/);
+        if(tokens.length === 1){
+            //request user name
+        } else {
+            var user = tokens[1];
+            console.log(user);
+        }
+    }
+
+    help(that, params) {
+    }
+
+    componentDidMount() {
+        $('.prompt').html('[anonymous@wissen] # ');
+    }
+
+    processCommand(fullCommand){
+        var command = fullCommand.split(' ')[0];
+        var commands = {
+            'time' : this.time,
+            'clear': this.clear,
+            'help': this.help,
+            'access': this.access
+        }
+        if(commands[command]){
+            commands[command](this, fullCommand);
+        } else {
+            this.setState({'output': this.state.output + 'command "' + command  + '" not found\n'});
+        }
+    }
+
+    handleUserInput(e) {
+        var that = this;
+        var instruction = e.target.value;
+        if(e.key === 'Enter'){
+            $('#inputxd').val('');
+            that.processCommand(instruction);
+        }
+    }
+
+    render() {
+        return(
+            <div class="ui container">
+              <div className='ui segment'>
+                <h2 className='ui center aligned icon header'>
+                  <i className='circular campground icon'></i>
+                  <div class="content">Code camp</div>
+                </h2>
+              </div>
+              <div className='ui inverted segment'>
+                <output><pre>{this.state.output}</pre></output>
+                <div id="input-line" className="input-line">
+                  <div class="prompt"></div>
+                  <div><input class="cmdline" id="inputxd" onKeyPress={(event) => this.handleUserInput(event)}/></div>
+                </div>
+              </div>
+            </div>
+        );
+    }
+}
+
+export default CodeCamp;
+
+-------------------------------------------------------
+
+
+
+Content.jsx
+-------------------------------------------------------
+
+import React, {Component} from 'react';
+
+class Content extends Component {
+
+    render() {
+        const classMap = {
+            h1: 'ui large header',
+            h2: 'ui medium header',
+        }
+
+        var converter = new showdown.Converter();
+        converter.setOption('headerLevelStart','4');
+        var html = { __html: converter.makeHtml(this.props.content)};
+
+        return (
+            <div className='ui segment' dangerouslySetInnerHTML={html}></div>
+        );
+    }
+}
+
+export default Content;
+
+-------------------------------------------------------
+
+
+
+CreateEditTaskModal.jsx
+-------------------------------------------------------
+
+import React, {Component} from 'react';
+import Modal from './Modal';
+
+class CreateEditTaskModal extends Component {
+
+    constructor(props){
+        super(props);
+
+        this.state = {
+            title: '',
+            description : '',
+            duedate : (new Date()).toISOString().substring(0,16),
+            tags: [],
+            tag: '',
+            category : '',
+            formTitle: '',
+            buttonText: ''
+        }
+
+        this.handleSubmit = this.handleSubmit.bind(this);
+        this.handleUserInput = this.handleUserInput.bind(this);
+        this.handleInit = this.handleInit.bind(this);
+        this.handleTagsKeyDownEvent = this.handleTagsKeyDownEvent.bind(this);
+        this.handleRemoveTagEvent = this.handleRemoveTagEvent.bind(this);
+    }
+
+    componentDidMount() {
+        $('#createtaskform').form({
+            fields: {
+                title : {
+                    identifier : 'title',
+                    rules : [
+                        {type : 'empty', prompt : 'You must provide a title for the task'},
+                        {type : 'maxLength[70]', prompt : 'Title cannot be larger than 70 characters'}
+                    ]
+                }
+            },
+            onSuccess : function(event, fields){
+                event.preventDefault();
+            },
+            keyboardShortcuts: false
+        });
+    }
+
+    handleUserInput(e) {
+        const name = e.target.name;
+        const value = e.target.value;
+        this.setState({[name]: value});
+    }
+
+    handleSubmit(e) {
+        e.preventDefault();
+        var that = this;
+
+        if($('#createtaskform').form('is valid')){
+            if(this.props.mode === 'create') {
+                $.ajax({
+                    type: 'POST',
+                    url: '/api/v1/tasks',
+                    headers: {
+                        'Authorization' : 'Bearer ' + this.props.token,
+                        'Accept' : 'application/json'
+                    },
+                    contentType: 'application/json',
+                    data: JSON.stringify({
+                        'title' : that.state.title,
+                        'dueDate' : that.state.duedate,
+                        'description' : that.state.description,
+                        'tags' : that.state.tags,
+                    }),
+                    error: function(XMLHttpRequest) {
+                    },
+                    success: function(resultData) {
+                        setTimeout(function() {
+                            that.props.getTasks();
+                            $('#createtaskmodal').modal('hide');
+                        }, 300);
+                    }
+                });
+            } else if(this.props.mode === 'edit') {
+                this.props.patchTask({
+                    'title': this.state.title,
+                    'description': this.state.description,
+                    'dueDate': this.state.duedate,
+                    'tags': this.state.tags
+                }, this.props.task);
+                setTimeout(function() {
+                    $('#createtaskmodal').modal('hide');
+                }, 300);
+            }
+        }
+    }
+
+    handleInit() {
+        if(this.props.mode === 'create') {
+            $('#cretaskdisplayerrors').empty();
+            $('#createtaskform').form('clear');
+            this.setState({
+                formTitle: 'Create task',
+                title: '',
+                description: '',
+                duedate : (new Date()).toISOString().substring(0,16),
+                tags : [],
+                tag: '',
+                buttonText: 'Create'
+            });
+        } else if(this.props.mode === 'edit') {
+            this.setState({
+                formTitle: 'Edit task ' + this.props.task.id,
+                title: this.props.task.title,
+                description: this.props.task.description,
+                duedate : (new Date(this.props.task.dueDate)).toISOString().substring(0,16),
+                tags: (this.props.task.tags === undefined ? [] : this.props.task.tags),
+                tag: '',
+                buttonText: 'Edit'
+            });
+        }
+   }
+
+    handleTagsKeyDownEvent(event) {
+        if(event.keyCode === 13) {
+            event.preventDefault();
+            if(!this.state.tags.includes(this.state.tag)){
+                var current = this.state.tags;
+                current.push(this.state.tag);
+
+                this.setState({
+                    tags: current,
+                    tag: ''
+                });
+            } else {
+                this.setState({
+                    tag: ''
+                });
+            }
+        }
+    }
+
+    handleRemoveTagEvent(tag) {
+       var current = this.state.tags.filter(e => e !== tag);
+       this.setState({
+           tags: current
+       });
+    }
+
+    render() {
+        var that = this;
+        return (
+            <Modal id='createtaskmodal' onOpeningCallback={this.handleInit}>
+              <form className='ui small form' id='createtaskform' onSubmit={this.handleSubmit}>
+                <h4 className='ui dividing header'>{this.state.formTitle}</h4>
+                <div className='field'>
+                  <label>Title</label>
+                  <input
+                    type='text'
+                    name='title'
+                    maxLength={70}
+                    value={this.state.title}
+                    onChange={(event) => this.handleUserInput(event)} />
+                </div>
+                <div className='field'>
+                  <label>Description</label>
+                  <textarea
+                    rows='2'
+                    name='description'
+                    value={this.state.description}
+                    onChange={(event) => this.handleUserInput(event)} />
+                </div>
+                <div className='two fields'>
+                  <div className='field'>
+                    <label>Tags</label>
+                    <input
+                      type='text'
+                      name='tag'
+                      id='tagref'
+                      value={this.state.tag}
+                      onChange={(event) => this.handleUserInput(event)}
+                      onKeyDown={(event) => this.handleTagsKeyDownEvent(event)} />
+                  </div>
+                  <div className='field'>
+                    <label>Due date</label>
+                    <input
+                      type='datetime-local'
+                      name='duedate'
+                      value={this.state.duedate} onChange={(event) => this.handleUserInput(event)} />
+                  </div>
+                </div>
+                <div className='two fields'>
+                  <div className='field'>
+                    <div className="ui labels">
+                      {this.state.tags.map((entry, i) =>{ return(
+                          <div class="ui teal label">
+                            <i class="tag icon"></i>
+                            {entry}
+                            <i class="delete icon" onClick={function() {
+                              that.handleRemoveTagEvent(entry);
+                            }}></i>
+                          </div>
+                      );})}
+                    </div>
+                  </div>
+                </div>
+                <div className='ui error message' id='cretaskdisplayerrors'></div>
+                <button className='ui small blue fluid button' type='submit' >{this.state.buttonText}</button>
+              </form>
+            </Modal>
+        );
+    }
+}
+
+export default CreateEditTaskModal;
+
+-------------------------------------------------------
+
+
+
+CreateEditTransactionModal.jsx
+-------------------------------------------------------
+
+import React, {Component} from 'react';
+import Modal from './Modal';
+
+class CreateEditTransactionModal extends Component {
+
+    constructor(props){
+        super(props);
+    }
+
+    handleInit() {
+    }
+
+    componentDidMount() {
+        $('#transactiontypedd').dropdown();
+        $('#accountdd').dropdown();
+        $('#categorydd').dropdown();
+    }
+
+    componentDidUpdate() {
+        $('#transactiontypedd').dropdown();
+        $('#accountdd').dropdown();
+        $('#categorydd').dropdown();
+    }
+
+    render() {
+        var that = this;
+        return (
+            <Modal id='xmodal' onOpeningCallback={this.handleInit}>
+              <form className='ui small form'>
+                <h4 className='ui dividing header'>Log transaction</h4>
+                <div class='fields'>
+                  <div className='four wide field'>
+                    <label>Type</label>
+                    <div class='ui selection dropdown' id='transactiontypedd'>
+                      <input type='hidden' name='transactiontype' value='EXPENSE'/>
+                      <div class="default text">Select type</div>
+                      <i class='dropdown icon'></i>
+                      <div class='menu'>
+                        <div class='item' data-value='INCOME'><i class='hand holding usd icon'></i>Income</div>
+                        <div class='item' data-value='EXPENSE'><i class='receipt icon'></i>Expense</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className='eight wide field'>
+                    <label>Description</label>
+                    <input type='text'></input>
+                  </div>
+                  <div className='four wide field'>
+                    <label>Amount</label>
+                    <input type='number'></input>
+                  </div>
+                </div>
+                <div class='fields'>
+                  <div className='five wide field'>
+                    <label>Account</label>
+                    <div class='ui selection dropdown' id='accountdd'>
+                      <input type='hidden' name='transactiontype' value='General'/>
+                      <div class="default text">Select account</div>
+                      <i class='dropdown icon'></i>
+                      <div class='menu'>
+                        <div class='item' data-value='General'>General</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className='six wide field'>
+                    <label>Date</label>
+                    <input type='datetime-local'></input>
+                  </div>
+                  <div className='five wide field'>
+                    <label>Category</label>
+                    <div class='ui selection dropdown' id='categorydd'>
+                      <input type='hidden' name='category' value='Misc'/>
+                      <div class="default text">Select category</div>
+                      <i class='dropdown icon'></i>
+                      <div class='menu'>
+                        <div class='item' data-value='Misc'><i class='wallet icon'></i>Misc</div>
+                        <div class='item' data-value='Salary'><i class='money bill alternate outline icon'></i>Salary</div>
+                        <div class='item' data-value='Debt'><i class='coins icon'></i>Debt</div>
+                        <div class='item' data-value='Misc'><i class='cash register icon'></i>Misc</div>
+                        <div class='item' data-value='Housing'><i class='home icon'></i>Housing</div>
+                        <div class='item' data-value='Party/Restaurants'><i class="glass martini alternate icon"></i>Party/Restaurants</div>
+                        <div class='item' data-value='Entertainment'><i class='film icon'></i>Entertainment</div>
+                        <div class='item' data-value='Grocery'><i class='shopping cart icon'></i>Grocery</div>
+                        <div class='item' data-value='Medical'><i class='stethoscope icon'></i>Medical</div>
+                        <div class='item' data-value='Personal'><i class='store icon'></i>Personal</div>
+                        <div class='item' data-value='Loans'><i class='money bill alternate outline icon'></i>Loans</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </form>
+            </Modal>
+        );
+    }
+}
+
+export default CreateEditTransactionModal;
+
+-------------------------------------------------------
+
+
+
+Dashboard.jsx
+-------------------------------------------------------
+
+
+import React, {Component, Fragment} from 'react';
+import TasksDashboard from './TasksDashboard';
+
+class Dashboard extends Component{
+
+    render() {
+        return(
+            <div class="ui container">
+              <div className='ui stackable two column grid'>
+                <div className='column'>
+                  <TasksDashboard
+                    authCallback={this.props.authCallback}
+                    user={this.props.user}
+                    token={this.props.token}
+                    avatar={this.props.avatar} />
+                </div>
+              </div>
+            </div>
+        );
+    }
+}
+
+export default Dashboard;
+
+-------------------------------------------------------
+
+
+
+Finance.jsx
+-------------------------------------------------------
+
+import React, {Component, Fragment} from 'react';
+import Pagination from './Pagination';
+import CreateEditTransactionModal from './CreateEditTransactionModal';
+
+class Finance extends Component{
+
+    constructor(props) {
+        super(props);
+
+        this.state = {
+            expenseTransactions: [],
+            incomeTransactions: [],
+            balance: 0.00,
+            incomeTotal: 0.00,
+            expensesTotal: 0.00,
+            date: new Date()
+        }
+    }
+
+    handleGetTransactionData( ) {
+        var that = this;
+
+        $.ajax({
+            type: 'GET',
+            url: '/api/v1/finance/balance?month='+ (this.state.date.getMonth() + 1) +'&year=' + this.state.date.getFullYear(),
+            headers: {
+                'Authorization' : 'Bearer ' + that.props.token,
+                'Accept' : 'application/json'
+            },
+            success: function(data) {
+                that.setState({
+                    balance: data.balance,
+                    incomeTotal: data.incomeAmount,
+                    expensesTotal: data.expensesAmount,
+                    expenseTransactions: data.expenses,
+                    incomeTransactions: data.income
+                });
+            }
+        });
+    }
+
+    componentDidMount() {
+        this.handleGetTransactionData();
+    }
+
+    render() {
+        return(
+            <div class="ui container">
+              <div className='ui segment'>
+                <h2 className='ui center aligned icon header'>
+                  <i className='circular chart line icon'></i>
+                  <div class="content">Expenses report<span class="sub header">{this.state.date.getMonth()+1}/{this.state.date.getFullYear()}</span></div>
+                </h2>
+              </div>
+              <div class="ui stackable grid">
+                <div class="row">
+                  <div class="ten wide column">
+                  </div>
+                  <div class="six wide column">
+                    <div class="ui green center aligned segment">
+                      <div class="ui tiny statistic">
+                        <div class="value"><i class="wallet icon"></i> {this.state.balance}</div>
+                        <div class="label">Balance MXN</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="row">
+                  <div class="four wide column">
+                    <button class="ui fluid button" onClick={function(){$('#xmodal').modal('show');}}><i class="plus icon"></i> Log transaction</button>
+                  </div>
+                  <div class="twelve wide column">
+                    <table class="ui striped compact table">
+                      <thead>
+                        <tr>
+                          <th colspan="3">Expenses</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {this.state.expenseTransactions.map((entry, i) =>{return(
+                            <tr>
+                              <td class='collapsing'><i class='calendar alternate outline icon'></i>{formatDate(entry.date)}</td>
+                              <td><i class='receipt icon'></i>{entry.description}</td>
+                              <td class='right aligned collapsing'>{entry.amount} MXN</td>
+                            </tr>
+                        );})}
+                      </tbody>
+                      <tfoot>
+                        <tr>
+                          <th></th>
+                          <th><b><i class="receipt icon"></i> Total</b></th>
+                          <th class='right aligned collapsing'>{this.state.expensesTotal} MXN</th>
+                        </tr>
+                      </tfoot>
+                    </table>
+                    <table class="ui striped compact table">
+                      <thead>
+                        <tr>
+                          <th colspan="3">Income</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {this.state.incomeTransactions.map((entry, i) =>{return(
+                            <tr>
+                              <td class='collapsing'><i class='calendar alternate outline icon'></i>{formatDate(entry.date)}</td>
+                              <td><i class='money bill alternate outline icon'></i>{entry.description}</td>
+                              <td class='right aligned collapsing'>{entry.amount} MXN</td>
+                            </tr>
+                        );})}
+                      </tbody>
+                      <tfoot>
+                        <tr>
+                          <th></th>
+                          <th><b><i class="donate icon"></i> Total</b></th>
+                          <th class='right aligned collapsing'>{this.state.incomeTotal} MXN</th>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </div>
+              </div>
+              <CreateEditTransactionModal />
+            </div>
+        );
+    }
+}
+
+export default Finance;
+
+-------------------------------------------------------
+
+
+
+LinkIconLabel.jsx
+-------------------------------------------------------
+
+
+import React, { Component } from 'react';
+
+class LinkIconLabel extends Component {
+
+    render(){
+        return (
+            <a className={`ui circular ${this.props.color} label`} href={this.props.url}>
+              <i className={`${this.props.icon} icon`}></i>
+              {this.props.text}
+            </a>
+        );
+    }
+
+}
+
+export default LinkIconLabel;
+
+-------------------------------------------------------
+
+
+
+Pagination.jsx
+-------------------------------------------------------
+
+import React, {Component, Fragment} from 'react';
+
+class Pagination extends Component {
+
+    render() {
+        if(this.props.pages <= 1 ) {
+            return(<Fragment />);
+        }
+
+        var next = (<Fragment />);
+        var prev = (<Fragment />);
+
+        if(this.props.pages !== this.props.current) {
+            next = (
+                <button class="ui right floated circular small icon button" onClick={this.props.nextCallback}>
+                  <i class="angle right fitted icon"></i>
+                </button>
+            );
+        }
+
+        if(this.props.current > 1) {
+            prev = (
+                <button className='ui circular small icon button' onClick={this.props.prevCallback}>
+                  <i className='angle left fitted icon'></i>
+                </button>
+            );
+        }
+
+        return(
+            <div className='ui centered grid'>
+              <div className='three wide column'>{prev}</div>
+              <div className='four wide center aligned column'>{`${this.props.current} of ${this.props.pages}`}</div>
+              <div className='three wide column'>{next}</div>
+            </div>
+        );
+    }
+}
+
+export default Pagination;
+
+-------------------------------------------------------
+
+
+
+Profile.jsx
+-------------------------------------------------------
+import React, {Component, Fragment} from 'react';
+
+class Profile extends Component {
+
+    render() {
+        return (
+            <div className='ui container'>
+              <div className='ui stackable grid'>
+                <div className='ui five wide column'>
+                  <div className='ui fluid card'>
+                    <div className='image'>
+                      <img src={`https://avatars.dicebear.com/v2/jdenticon/${this.props.avatar}.svg`} />
+                    </div>
+                    <div className='content'>
+                      <div className='header'>{this.props.user}</div>
+                      <div className='meta'>
+                        <a>Paladin</a>
+                      </div>
+                      <div className='description'>
+                        This is a short bio text that users can place
+                      </div>
+                    </div>
+                    <div className='extra content'>
+                      <span className='right floated'>Joined in 2013</span>
+                      <span><i className='award teal icon'></i>75 achievements</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+        );
+    }
+
+}
+
+export default Profile;
+
+-------------------------------------------------------
+
+
+
+Task.jsx
+-------------------------------------------------------
+
+import React, {Component} from 'react';
+
+class Task extends Component {
+
+    render(){
+        var iconClass = getTaskIconClass(this.props.task.completed, this.props.task.dueDate);
+        var that = this;
+        return(
+            <div className='item'>
+              <i className={`large ${iconClass} middle aligned icon`} onClick={function () {
+                that.props.task.patchAction({completed : !that.props.task.completed});
+              }}></i>
+              <div className='content' onClick={this.props.task.viewAction}>
+                <div className='header'>{this.props.task.title}</div>
+                <div className='description'><pre style={{margin: '0'}}>{this.props.task.description}</pre></div>
+              </div>
+            </div>
+        );
+    }
+}
+
+export default Task;
+
+-------------------------------------------------------
+
+
+
+TaskDashboard.jsx
+-------------------------------------------------------
+
+import React, {Component, Fragment} from 'react';
+import Task from './Task';
+import Pagination from './Pagination';
+import ChartComponent from './ChartComponent';
+import CreateEditTaskModal from './CreateEditTaskModal';
+import ViewTaskModal from './ViewTaskModal';
+
+class TasksDashboard extends Component {
+
+    constructor(props) {
+        super(props);
+
+        this.state = {
+            tasks: [],
+            task: undefined,
+            filters: [
+                {
+                    name: 'To do',
+                    url: '/api/v1/tasks/search/todo?size=5&page=',
+                    color: 'teal'
+                }, {
+                    name: 'Past due',
+                    url: '/api/v1/tasks/search/pastdue?size=5&page=',
+                    color: 'red'
+                }, {
+                    name: 'Completed',
+                    url: '/api/v1/tasks/search/completed?size=5&page=',
+                    color: 'green'
+                }, {
+                    name: 'Tag',
+                    url: '/api/v1/tasks/search/bytag?size=5'
+                }
+            ],
+            selectedFilter : {
+                name: 'To do',
+                url: '/api/v1/tasks/search/todo?size=5&page='
+            },
+            mode: 'create',
+            pages: 1,
+            currentPage: 1,
+            tag: ''
+        };
+
+        this.handleStateChange = this.handleStateChange.bind(this);
+        this.handleGetTasks = this.handleGetTasks.bind(this);
+        this.handlePatchTask = this.handlePatchTask.bind(this);
+        this.handleDeleteTask = this.handleDeleteTask.bind(this);
+        this.handleTagsKeyDownEvent = this.handleTagsKeyDownEvent.bind(this);
+    }
+
+    handleStateChange(object, callback) {
+        this.setState(object, callback);
+    }
+
+    componentDidMount() {
+        var that =this;
+
+        this.setState({selectedFilter: this.state.filters[0]});
+
+        $('#taskfiltermenu').dropdown({
+            onChange : function(value, text, $selectedItem) {
+                if(text === undefined) {
+                    return;
+                }
+
+                that.setState({
+                    selectedFilter: that.state.filters.find(obj => {return obj.name === value}),
+                    currentPage: 1
+                }, function() {
+                    that.handleGetTasks();
+                });
+            },
+            selectOnKeydown: false,
+            onShow: function() {
+                $('#taginput').val('');
+                $('#taskfiltermenu').dropdown('clear');
+            }
+        });
+
+        this.handleGetTasks();
+    }
+
+    componentDidUpdate(prevProps, prevState) {
+        var that =this;
+
+        $('#taskfiltermenu').dropdown({
+            onChange : function(value, text, $selectedItem) {
+                if(text === undefined) {
+                    return;
+                }
+
+                that.setState({
+                    selectedFilter: that.state.filters.find(obj => {return obj.name === value}),
+                    currentPage: 1
+                }, function() {
+                    that.handleGetTasks();
+                });
+
+            },
+            selectOnKeydown: false,
+            onShow: function() {
+                $('#taginput').val('');
+                $('#taskfiltermenu').dropdown('clear');
+            }
+        });
+
+        var prevSignature = md5(JSON.stringify(prevState.tasks) + prevProps.user + prevProps.token);
+        var currSignature = md5(JSON.stringify(this.state.tasks) + this.props.user + this.props.token);
+
+        if(prevSignature !== currSignature){
+            this.handleGetTasks();
+        }
+    }
+
+    handleDeleteTask(task) {
+        var that = this;
+
+        $.ajax({
+            type: 'DELETE',
+            url: '/api/v1/tasks/' + task.id,
+            headers: {
+                'Authorization' : 'Bearer ' + that.props.token,
+                'Accept' : 'application/json'
+            },
+            contentType: 'application/json',
+            error: function(XMLHttpRequest) {
+
+            },
+            success: function(resultData) {
+                that.handleGetTasks();
+                setTimeout(function() {
+                    $('#taskmodal').modal('hide');
+                }, 100);
+            }
+        });
+    }
+
+    handlePatchTask(attributes, task) {
+        var that = this;
+
+        $.ajax({
+            type: 'PATCH',
+            url: '/api/v1/tasks/' + task.id,
+            headers: {
+                'Authorization' : 'Bearer ' + that.props.token,
+                'Accept' : 'application/json'
+            },
+            contentType: 'application/json',
+            data: JSON.stringify(attributes),
+            error: function(XMLHttpRequest) {
+
+            },
+            success: function(resultData) {
+                that.setState({'task' : task}, function() {that.handleGetTasks();});
+            }
+        });
+    }
+
+    handleGetTasks() {
+        var that = this;
+
+        this.props.authCallback(function() {
+            $.ajax({
+                type: 'GET',
+                url: that.state.selectedFilter.url + (that.state.currentPage - 1),
+                headers: {
+                    'Authorization' : 'Bearer ' + that.props.token,
+                    'Accept' : 'application/json'
+                },
+                contentType: 'application/x-www-form-urlencoded',
+                success: function(data) {
+                    that.setState({
+                        pages: data.totalPages,
+                        currentPage: data.number + 1
+                    });
+                    data.content.forEach(function(element){
+
+                        element.viewAction = function() {
+                            that.setState({task: element}, function() {
+                                $('#taskmodal').modal('show');
+                            });
+                        }
+
+                        element.patchAction = function(attributes) {
+                            that.handlePatchTask(attributes, element);
+                        }
+
+                        element.deleteAction = function() {
+                            that.handleDeleteTask(element);
+                        }
+                    });
+
+                    that.setState({tasks: data.content});
+                }
+            });
+        }, function() {});
+    }
+
+    handleTagsKeyDownEvent(event) {
+        var that = this;
+
+        if(event.keyCode === 13) {
+            event.preventDefault();
+            var filter = {...(this.state.filters.find(obj => {return obj.name === 'Tag'}))};
+            filter.url = filter.url + '&tags=' + $('#taginput').val() +'&page=';
+            filter.name = filter.name + ': ' + $('#taginput').val();
+            $('#taskfiltermenu').dropdown('hide');
+            this.setState({
+                selectedFilter: filter,
+                currentPage: 1
+            }, function() {
+                that.handleGetTasks();
+            });
+        }
+    }
+
+    render() {
+        if(this.props.user === 'anonymous') {
+            return (<Fragment />);
+        }
+
+        var tasks = (<Fragment/>);
+        var that = this;
+
+        if(this.state.tasks.length > 0) {
+            tasks = (
+              <div className='ui relaxed divided list'>{this.state.tasks.map((entry, i) =>{return(
+                <Task task={entry} />);})}
+              </div>
+            );
+        } else {
+            tasks = (<div className='ui message'><i class='coffee icon'></i> You are all set!</div>);
+        }
+
+        return(
+            <Fragment>
+              <div className='ui top attached menu'>
+                <div className='header item'><i className='tasks icon'></i>{this.state.selectedFilter.name}</div>
+                <div className='right menu'>
+                  <div class='ui item' onClick={function() {
+                    that.setState({mode: 'create'}, function() {$('#createtaskmodal').modal('show');});
+                  }}><i className='fitted plus icon'></i></div>
+                  <div className='ui dropdown icon item' id='taskfiltermenu'>
+                    <i className='fitted filter icon'></i>
+                    <i className='dropdown icon'></i>
+                    <div className='menu'>
+                      <div class="header">Search tags</div>
+                      <div class='ui input'>
+                        <input
+                          type='text'
+                          id='taginput'
+                          onKeyDown={(event) => this.handleTagsKeyDownEvent(event)}/>
+                      </div>
+                      <div class='header'><i class='filter icon'></i>Filters</div>
+                      <div class='divider'></div>
+                      {this.state.filters.map((entry, i) =>{if(entry.name !== 'Tag') return(
+                      <div className='item' data-value={entry.name}>
+                        <div class={"ui " + entry.color + " empty circular label"}></div>{entry.name}
+                      </div>
+                      );})}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className='ui bottom attached segment'>
+                {tasks}
+                <Pagination
+                  pages={this.state.pages}
+                  current={this.state.currentPage}
+                  prevCallback={function() {
+                    if(that.state.currentPage > 1) {
+                        var n = that.state.currentPage - 1;
+                        that.setState({'currentPage': n}, that.handleGetTasks);
+                    }
+                  }}
+                  nextCallback={function() {
+                      if(that.state.currentPage < that.state.pages) {
+                          var n = that.state.currentPage + 1;
+                          that.setState({'currentPage': n}, that.handleGetTasks);
+                      }
+                  }}/>
+                <div style={{clear:'both'}}></div>
+              </div>
+              <ViewTaskModal
+                user={this.props.user}
+                avatar={this.props.avatar}
+                task={this.state.task}
+                parentStateCallback={this.handleStateChange} />
+              <CreateEditTaskModal
+                token={this.props.token}
+                mode={this.state.mode}
+                task={this.state.task}
+                patchTask={this.handlePatchTask}
+                getTasks={this.handleGetTasks} />
+            </Fragment>
+        );
+    }
+}
+
+export default TasksDashboard;
+
+-------------------------------------------------------
+
+
+
+ViewTaskModal.jsx
+-------------------------------------------------------
+
+import React, {Component, Fragment} from 'react';
+import Modal from './Modal';
+
+class ViewTaskModal extends Component {
+
+    render(){
+        if(this.props.task === undefined) {
+            return (<Fragment />);
+        }
+
+        var that = this;
+
+        var formattedDate = dateDiffFormat(new Date(), new Date(this.props.task.creationDate)) + ' ago';
+        var dueDateFormatted = formatDate(this.props.task.dueDate);
+
+        var tags = (<Fragment />);
+        if(this.props.task.tags != undefined && this.props.task.tags.length > 0) {
+            tags = (<div className="ui labels">
+              {this.props.task.tags.map((entry, i) =>{ return(
+                  <div className="ui teal label">
+                    <i className="tag icon"></i>
+                    {entry}
+                  </div>
+              );})}
+            </div>);
+        }
+
+        return(
+            <Modal id='taskmodal' modalType='basic' >
+              <div className='ui fluid card'>
+                <div className='content'>
+                  <i class="right floated trash alternate outline grey icon" onClick={function() {
+                    that.props.task.deleteAction();
+                  }}></i>
+                  <i class="right floated edit outline grey icon" onClick={function() {
+                    that.props.parentStateCallback({mode: 'edit'}, function() {$('#createtaskmodal').modal('show');});
+                  }}></i>
+                  <div className='header'>{this.props.task.title}</div>
+                  <div className='meta'>
+                    {formattedDate}
+                    <span className='right floated'>Due {dueDateFormatted}</span></div>
+                  <div className='description'>
+                    <p style={{color:'black'}}><pre>{this.props.task.description}</pre></p>
+                    {tags}
+                  </div>
+                </div>
+                <div class="extra content">
+                  <div class="right floated author">
+                    <img class="ui avatar image" src={`https://avatars.dicebear.com/v2/jdenticon/${this.props.task.id}.svg`}/> {this.props.task.id}
+                  </div>
+                </div>
+              </div>
+            </Modal>
+        );
+    }
+}
+
+export default ViewTaskModal;
+
+-------------------------------------------------------------------
+
+
+
+        $('.ui.search')
+          .search({
+            minCharacters : 3,
+            apiSettings   : {
+              onResponse: function(githubResponse) {
+                var
+                  response = {
+                    results : []
+                  }
+                ;
+                $.each(githubResponse.content, function(index, item) {
+                  var
+                    maxResults = 8
+                  ;
+                  if(index >= maxResults) {
+                    return false;
+                  }
+
+                  response.results.push({
+                    title       : item.title,
+                    description : item.description.slice(0, 40)
+                  });
+                });
+                return response;
+              },
+              url: '/api/v1/tasks/search/bytag?tag={query}&size=5&page=0',
+              headers: {
+                  'Authorization' : 'Bearer ' + that.props.token,
+                  'Accept' : 'application/json'
+              }
+            }
+          })
+        ;
+
+
+
+
+         <div class="ui right aligned category search item">
+                            <div class="ui transparent icon input">
+                              <input class="prompt" type="text" placeholder="Search by tag" />
+                              <i class="search link icon"></i>
+                            </div>
+                            <div class="results"></div>
+                          </div>
+
+import React, { Component } from 'react';
+import Goal from './Goal';
+
+class Tracker extends Component {
+
+	constructor(props){
+		super(props);
+
+		this.state = {
+			title : '',
+			priority : '',
+			goals : []
+		}
+
+		this.handleSubmit = this.handleSubmit.bind(this);
+		this.addGoal = this.addGoal.bind(this);
+		this.handleUserInput = this.handleUserInput.bind(this);
+	}
+
+	componentDidMount(){
+
+	}
+
+	addGoal(goal){
+		var goalsx = this.state.goals;
+		goalsx.push(goal);
+		this.setState({
+			goals : goalsx
+		});
+	}
+
+	handleSubmit(e){
+		e.preventDefault();
+
+
+		var goal = {
+			title : this.state.title,
+			priority :  this.state.priority,
+			date : new Date().getTime(),
+			owner : $.cookie('hashuser'),
+			id : 'smething',
+			state : 'active'
+		};
+		this.setState({title: ''});
+		this.setState({priority: ''});
+		this.addGoal(goal);
+	}
+
+	handleUserInput (e) {
+		const name = e.target.name;
+		const value = e.target.value;
+		this.setState({[name]: value});
+	}
+
+	render(){
+		return(
+			<div className='ui segment'>
+				<form className='ui form' onSubmit={this.handleSubmit}>
+					<h4 className="ui dividing header">New goal</h4>
+					<div className="stackable fields">
+						<div className='twelve wide field'>
+							<label htmlFor='goal'>Goal</label>
+							<input type='text' maxLength={50} value={this.state.title} onChange={(event) => this.handleUserInput(event)} name='title' required="required"/>
+						</div>
+						<div className='four wide field'>
+							<label>Priority</label>
+							<select value={this.state.priority} onChange={(event) => this.handleUserInput(event)}  name='priority' required="required">
+								<option value="">Select</option>
+								<option value="0">Top</option>
+								<option value="1">High</option>
+								<option value="2">Mid</option>
+								<option value="3">Low</option>
+							</select>
+						</div>
+					</div>
+					<p />
+					<button type='submit' className='ui button'>Create goal</button>
+					<p />
+				</form>
+				<h4 className="ui dividing header">Goals</h4>
+				{this.state.goals.map((entry, i) =>{
+					return(
+						<Goal obj={entry} />
+					);
+				})}
+			</div>
+		);
+	}
+}
+
+export default Tracker;
+
+
+
+
+
+
+
+<p>{"Project info"}</p>
+									<div className='ui labels'>
+										<LinkIconLabel color='' icon='github' url='https://github.com/seiferxx/wissen' text='wissen' />
+										<LinkIconLabel color='' icon='code branch' url='https://github.com/seiferxx/wissen' text='0.0.4_1812' />
+									</div>
+									<div className="ui segment">
+										<div className="ui list">
+											<h4 className="ui header">Technologies used</h4>
+											<div className="item">
+												<i className="npm circular icon"></i>
+												<div className='content'>npm v6.7.0</div>
+											</div>
+											<div className="middle aligned item">
+												<i className="node circular icon"></i>
+												<div className='content'>node v10.15.1</div>
+											</div>
+											<div className="middle aligned item">
+												<i className="react circular icon"></i>
+												<div className='content'>react v16.8.3</div>
+											</div>
+											<div className="middle aligned item">
+												<i className="leaf circular icon"></i>
+												<div className='content'>spring v2.0.3.RELEASE</div>
+											</div>
+											<div className="middle aligned item">
+												<i className="coffee circular icon"></i>
+												<div className='content'>java v1.8</div>
+											</div>
+											<div className="middle aligned item">
+												<i className="database circular icon"></i>
+												<div className='content'>mongo</div>
+											</div>
+										</div>
+									</div>
+
+
+
+      class TopMenu extends React.Component{
+
+        static defaultProps = {
+          userName : 'Anonymous'
+        }
+
+        constructor(props){
+          super(props);
+        }
+
+        handleClick(){
+          $(".modal").modal("show");
+        }
+
+        render(){
+          return (
+            <div className="ui top attached menu">
+              <div className="ui item">
+                <a href="/"><h3 className="ui header">Wissen</h3></a>
+              </div>
+              <div className="ui right item" onClick={this.handleClick}>
+                <i className="large user circle outline icon"></i>
+                <span>{this.props.userName}</span>
+              </div>
+            </div>
+          );
+        }
+      }
+
+      class Modal extends React.Component{
+        
+        static defaultProps = {
+          id : '',
+          title : 'Empty modal',
+          children : <p>Empty modal</p>
+        }
+
+        render(){
+          return (
+            <div className="ui modal" id={this.id}>
+              <i className="close icon"></i>
+              <div className="header">{this.props.title}</div>
+              <div className="content">{this.props.children}</div>
+            </div>
+          );
+        }
+      }
+
+      class IconMessage extends React.Component{
+        static defaultProps = {
+          header : 'Title',
+          message : 'Message goes here'
+        }
+       
+        render(){
+          return (
+            <div className="ui icon message">
+              <i className="id badge icon"></i>
+              <div className="content">
+                <div className="header">{this.props.header}</div>
+                <p>{this.props.message}</p>
+              </div>
+            </div>
+          );
+        }
+      }
+      
+      class Form extends React.Component{
+      	handleClick(){
+          this.props.func();
+        }
+
+        render(){
+          return (
+            <form className="ui form">
+              {this.props.fields.map((entry, i) =>{
+              	return(
+              	  <div className="field">
+              	    <label for={entry.name}>{entry.text}</label>
+              	    <input type={entry.type} id={entry.id} name={entry.name}/>
+              	  </div>
+          	    );
+              })}
+              <button className="ui button" type="button" onClick={this.handleClick}>Login</button>
+            </form>
+          );
+        }
+      }
+
+
+      ReactDOM.render( <App/>, document.getElementById('root'));
+      $('.ui.modal').modal({allowMultiple: false});
+      
+      var loginFormData = [
+            {
+              name : 'user',
+              id : 'user',
+              type : 'text',
+              text : 'User'
+            },
+            {
+              name : 'passwd',
+              id : 'passwd',
+              type : 'password',
+              text : 'Password'
+            }
+          ];
+          
+ //         <TopMenu/>
+ //             <Modal title='Authentication stage' id='authmodal'>
+ //               <IconMessage message='Welcome to wissen, please provide your credentials.' header='Hi! Stranger'/>
+ //               <Form fields={loginFormData} />
+ //             </Modal>
+ 
+ 
+  <div class="field">
+            <label>Password</label>
+            <input type="password" id="passwd" name="passwd"/>
+          </div>
+          <div class="ui two buttons">
+            <button class="ui button" type="button" onclick="authenticate()">Login</button>
+            <div class="or"></div>
+            <button class="ui button" type="button" id="tgrm">Register</button>
+          </div>
+        </form>
+        
+        
+        /**
+ * Session token validation
+ */
+//<![CDATA[
+
+function validateToken(){
+	
+}
+//]]>
+
+/*eslint-disable no-undef */
+$('.ui.dropdown').dropdown();
+$('.ui.modal').modal({allowMultiple: false});
+$('#regmod').modal('attach events', '#tgrm');
+$('.progress').progress();
+$('.message .close').on('click', function(){$(this).closest('.message').transition('fade');});
+$('.ui.accordion').accordion();
+
+/**Main UI load function**/
+$(document).ready(function(){
+	validateToken();
+});
+
+/**
+ * Used to raise the modal for authentication
+ */
+function showAuthModal(origin){
+	if($.cookie("authuser") === undefined && $.cookie("authtoken") === undefined) {
+		$("#wrongcredentials").addClass("hidden");
+		
+		if(origin === "menuButton"){
+			$("#usageNotex").addClass("hiddenf");
+			$("#welcomeNotex").removeClass("hiddenf");
+		} else if(origin === "feature"){
+			$("#welcomeNotex").addClass("hiddenf");
+			$("#usageNotex").removeClass("hiddenf");
+		}
+		$("#authmod").modal("show");
+	}
+}
+
+function logout(){
+	$.removeCookie("authuser");
+	$.removeCookie("authtoken");
+	$.removeCookie("hashuser");
+	//load
+}
+
+
+---------------------------------------------------------------------------------
+
+
+
+<div class="ui container">
+      <div class="ui grid">
+        <div class="row">
+          <div class="four wide teal column"></div>
+          <div class="twelve wide column">
+            <div class="ui grid">
+	            <div class="one column row">
+	              <div class="column">
+	              
+	              </div>
+	            </div>
+	            <div class="three column row">
+	              <div class="column">
+	                <div class="ui red segment">Red</div>
+	                <div class="ui orange segment">Orange</div>
+	                <div class="ui yellow segment">Yellow</div>
+	              </div>
+	              <div class="orange column"></div>
+	              <div class="yellow column"></div>
+	            </div>
+	        </div>
+          </div>
+        </div>
+      </div>
+      
+      
+      
+    </div>
+
+
+
+<div className='ui container'>
+					<div className='ui stackable grid'>
+						<div className='eight wide column'>
+							<Tracker />
+						</div>
+					</div>
+				</div>
+
+
+
+success: function(response) {
+			$("#tasktitle").text(response.title);
+			var cdate = new Date(response.creationDate);
+			$("#taskcreationdate").text("Created " + (cdate.getMonth()+1).pad(2) + "/"+(cdate.getDate()).pad(2)+"/"+cdate.getFullYear() + " " + (cdate.getHours()).pad(2) + ":"+(cdate.getMinutes()).pad(2))
+			if(response.descriptionRequired){
+				var descontent = $("<p></p>");
+				descontent.text(response.description);
+				$("#taskdescription").empty();
+				$("#taskdescription").append(descontent);
+			}else{
+				$("#taskdescription").empty();
+			}
+			$("#tasktags").empty();
+			var ddate = new Date(response.dueDate);
+			var tag = $("<div></div>");
+			if(ddate.getTime() - (new Date()).getTime() > 18000000){
+				tag.addClass("ui teal tiny label");
+			} else if (ddate.getTime() - (new Date()).getTime() > 7200000){
+				tag.addClass("ui yellow tiny label");
+			} else {
+				tag.addClass("ui red tiny label");
+			}
+			tag.text("DD " + (ddate.getMonth()+1).pad(2) + "/"+(ddate.getDate()).pad(2)+"/"+ddate.getFullYear() + " " + (ddate.getHours()).pad(2) + ":"+(ddate.getMinutes()).pad(2));
+			$("#tasktags").append(tag);
+			console.log(response);
+			if(response.expires){
+				var edate = new Date(response.dueDate);
+				var taged = $("<div></div>");
+				taged.addClass("ui tiny label");
+				taged.text("ED " + (edate.getMonth()+1).pad(2) + "/"+(edate.getDate()).pad(2)+"/"+edate.getFullYear() + " " + (edate.getHours()).pad(2) + ":"+(edate.getMinutes()).pad(2));
+				$("#tasktags").append(taged);
+			}
+			
+			$("#taskdetmod").modal("show");
+		},
+		error: function(XMLHttpRequest, textStatus, errorThrown) {
+			console.log(textStatus);
+			console.log(XMLHttpRequest);
+		}
+
+
+					var row = $("<div></div>");
+					var column = $("<div></div>");
+					var checkboxContainer = $("<div></div>");
+					var checkbox = $("<input type='checkbox' name='" + entry.id + "tsk'/>");
+					var checkboxLabel = $("<label></label>");
+					var ddLabel = $("<div></div>");
+					var ddate = new Date(entry.dueDate);
+					var deleteButton = $("<button></button>");
+					var editButton = $("<button></button>");
+					var editIcon = $("<i></i>");
+					var deleteIcon = $("<i></i>");
+					
+					if(firstElem){
+						firstElem = false;
+						column.addClass("column tlistfcol");
+						row.addClass("one column row tlistfelem unselectablef");
+					} else {
+						row.addClass("one column row tlistelem");
+						column.addClass("column tlistcol unselectablef");
+					}
+					
+					checkboxContainer.addClass("ui checkbox");
+					checkboxLabel.text(entry.title);
+					checkboxLabel.click(function(){showTaskModal(entry.identifier)});
+					ddLabel.addClass("ui basic label floatfright");
+					ddLabel.addClass(getLabelColor(ddate));
+					ddLabel.text("DD " + dateToStringCompact(ddate));
+					column.bind('touchstart',function(){catchTaskHold(entry.identifier)});
+					column.bind('touchend',function(){catchTaskRelease(entry.identifier)});
+					column.attr("id", "col" + entry.identifier);
+					deleteButton.addClass("ui mini icon basic button floatfright transition hidden");
+					editButton.addClass("ui mini icon basic button floatfright transition hidden");
+					editIcon.addClass("pencil icon");
+					deleteIcon.addClass("trash icon");
+					
+					checkbox.change(function() {
+						if (this.checked) {
+							var datax = {
+								completed : true
+							};
+							$.ajax({
+								type: 'PATCH',
+								url: "/api/tasks/"+entry.identifier,
+								data: JSON.stringify(datax),
+								headers: {
+									"Authorization" : "Bearer " + $.cookie("authtoken"),
+									"Accept" : "application/json"
+								},
+								contentType: "application/json; charset=utf-8",
+								success: function(response) {
+									console.log("updated");
+								},
+								error: function(XMLHttpRequest, textStatus, errorThrown) {
+									console.log(textStatus);
+									console.log(XMLHttpRequest);
+								}
+							});
+
+
+
+						} else {
+							console.log("oposite");
+						}
+					});
+					
+					$("#taskslist").append(row);
+					row.append(column);
+					column.append(checkboxContainer);
+					checkboxContainer.append(checkbox);
+					checkboxContainer.append(checkboxLabel);
+					column.append(ddLabel);
+					editButton.append(editIcon);
+					deleteButton.append(deleteIcon);
+					column.append(editButton);
+					column.append(deleteButton);
+
+
+ <canvas id="map" width="330" height="100"></canvas>
+      <div class="ui one column grid">
+        <div class="column">
+        <div class="ui three tiny statistics">
+          <div class="teal statistic">
+            <div class="value">5</div>
+            <div class="label">Completed</div>
+          </div>
+          <div class="yellow statistic">
+            <div class="value">22</div>
+            <div class="label">Due</div>
+          </div>
+          <div class="red statistic">
+            <div class="value">10</div>
+            <div class="label">Expiring</div>
+          </div>
+        </div>
+        </div>
+        <div class="column">
+          <h4 class="ui top attached header hiddenf" id="tasksheader">Tasks</h4>
+          <div class="ui attached segment hiddenf" id="taskssegment">
+          	<div class="ui vertically divided grid" id="taskslist">
+          	</div>
+          </div>
+          <div class="ui clearing bottom attached segment hiddenf" id="taskfooter">
+            <button class='ui mini icon button right floated' onclick='showNewTaskModal()'><i class='plus icon'></i>Add a task</button>
+          </div>
+        </div>
+        <div class="column">
+          <div class="ui icon info message hidden" id="messagenoauthy">
+            <i class="sticky note outline icon"></i>
+            <div class="content">
+              <div class="header">Welcome to wissen</div>
+              <p>A spring boot application with no sense.</p>
+              <p>This is just a silly message not to present an empty screen to the newcomers.</p>
+            </div>
+          </div>
+        </div>
+        <div class="column">
+          <div class="ui icon warning message hidden" id="messagenoauthx">
+            <i class="warning sign icon"></i>
+            <div class="content">
+              <div class="header">This site is still under development!</div>
+              <p>Everything related to the system and its development can be tracked on the <a href="https://github.com/seiferxx/wissen/">github page</a>.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      
+      
+      
+      <div class="ui modal" id="newtaskmod">
+      <i class="close icon"></i>
+      <div class="header">New Task</div>
+      <div class="scrolling content">
+        <form class="ui form">
+          <div class="field">
+            <label>Title</label>
+            <input type="text" name="tasktitlef" id="tasktitlef" placeholder="Some task name" maxlength="24"/>
+          </div>
+          <div class="field">
+            <div class="ui checkbox">
+              <input type="checkbox" name="taskdescneededf" id="taskdescneededf" onchange="toggleNewTaskDesc()" checked="true" />
+              <label>Description needed?</label>
+            </div>
+          </div>
+          <div class="field" id="taskdescfieldf">
+            <label>Description</label>
+            <textarea rows="3" name="taskdescf" id="taskdescf"></textarea>
+          </div>
+          <div class="field">
+            <label>Due date</label>
+            <input type="datetime-local" name="taskduedatef" id="taskduedatef" />
+          </div>
+          <div class="field">
+            <div class="ui checkbox">
+              <input type="checkbox" name="taskexpiresf" id="taskexpiresf" onchange="toggleExpireDate()" checked="true"/>
+              <label>Expires?</label>
+            </div>
+          </div>
+          <div class="field" id="taskexpirationdatefieldf">
+            <label>Expiration date</label>
+            <input type="datetime-local" name="taskexpirationdatef" id="taskexpirationdatef" />
+          </div>
+          <div class="right aligned">
+            <button class="ui button" type="button" onclick="createTask()">Create task</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    
+    <div class="ui basic modal" id="taskdetmod">
+      <div class="content">
+        <div class="ui one cards">
+        <div class="card">
+          <div class="content">
+            <div class="header"><span id="tasktitle"></span></div>
+              <div class="meta">
+                <span id="taskcreationdate"></span>
+              </div>
+              <div class="description" id="taskdescription">
+              </div>
+            </div>
+            <div class="extra content" id="tasktags">
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+
+
+
+<div class="one column row">
+  <div class="column">
+    <div class="ui checkbox">
+      <input type="checkbox" name="task1" />
+      <label>Wash</label>
+    </div>
+    <div class="ui basic label floatfright">DD 25h</div>
+  </div>
+</div>
+          	  <div class="one column row" style="padding-bottom: 7px; padding-top: 7px;">
+          	    <div class="column" style="margin-bottom:0px; margin-top:0px;">
+          	      <div class="ui checkbox" style="float: left;" >
+          	        <input type="checkbox" name="task1" />
+                    <label>Wash</label>
+                  </div>
+                  <button class="ui mini icon button" style="float:right;"><i class="cloud icon"></i></button>
+                  <button class="ui mini icon button" style="float:right;"><i class="cloud icon"></i></button>
+          	    </div>
+          	  </div>
+          	  <div class='one column row'><div class='column'><button class='ui mini icon button floatfright'><i class='plus icon'></i>Add a task</button></div></div>
+
+
+
+
+
+
+
+function irrigate(plantid) {
+  if($.cookie("authtoken") === undefined) {
+    $("#wrongcredentials").addClass("hidden");
+    $("#user").val("");
+    $("#passwd").val("");
+    $("#authmod").modal("show");
+  }
+  else {
+    var xdata = {
+      date: (new Date()).getTime(),
+      person : $.cookie("authuser"),
+      plant : plantid
+    };
+    $.ajax({
+      type: 'POST',
+      url: "/api/irrigationRecords",
+      contentType: "application/json; charset=utf-8",
+      dataType: 'json',
+      headers: {
+        "Authorization" : "Bearer " + $.cookie("authtoken"),
+      },
+      data: JSON.stringify(xdata),
+        success: function(resultData) {
+        var cDate = new Date();
+        $("#latest").removeClass("redstatus");
+        $("#latest").addClass("greenstatus");
+        $("#latest").text("0.00 hours ago");
+      },
+      error: function(XMLHttpRequest, textStatus, errorThrown) {
+        console.log(textStatus);
+        console.log(XMLHttpRequest.responseStatus);
+      }
+    });
+  }
+}
+
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+	</head>
+	<body>
+		
+		<!-- INDEX HEADER -->
+		<div th:fragment="indexHeader">
+		<h1 class="ui center aligned icon header">
+			<i class="circular book icon"></i>
+			<div class="content">
+				Wissen
+				<div class="sub header">Flashcards repository</div>
+			</div>
+		</h1>
+		<div style="margin-top: 50px"></div>
+		</div>
+		
+		
+	</body>
+</html>
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+		<link rel="stylesheet" type="text/css" href="/css/semantic.css" />
+		<title>Wissen</title>
+		<script src="http://cytoscape.github.io/cytoscape.js/api/cytoscape.js-latest/cytoscape.min.js"></script>
+		<script src="https://cdn.rawgit.com/cytoscape/cytoscape.js-spread/1.0.9/cytoscape-spread.js"></script>
+		<script src="https://cdn.rawgit.com/cytoscape/cytoscape.js-cose-bilkent/1.0.5/cytoscape-cose-bilkent.js"></script>
+		<style>
+			#cy {
+		        position: absolute;
+		        left: 0;
+		        top: 0;
+		        right: 0;
+		        bottom: 0;
+		        z-index: 999;
+		      }
+    	</style>
+	</head>
+	<body>
+		<div id="cy"></div>
+				
+		<script src="https://code.jquery.com/jquery-2.2.4.min.js"></script>
+		<script src="/js/semantic.js"></script>
+		<script>
+			$('.ui.dropdown')
+			  .dropdown()
+			;
+
+		</script>
+		<script th:inline="javascript" type="text/javascript">
+		/*<![CDATA[*/
+			var concepts = [[${concepts}]];
+			var map = [[${map}]];
+			var relations = [[${relations}]];
+			var elem = [];
+			
+			for( i= 0; i < concepts.length; i++ ){
+				elem.push( { data: { id: map[concepts[i]] , label: concepts[i] }, classes: 'top-center' } );
+			}
+			for( i = 0; i < relations.length; i++ ){
+				elem.push( { data: { id: relations[i].other.id , label: relations[i].other.text }, classes: 'top-center' } );
+				elem.push( { data: { source: map[relations[i].subject.text], target: relations[i].other.id, label: relations[i].action.text }, classes: 'autorotate' } );
+			}
+			//{ data: { source: '${relations.subject.text}', target: 'ar-tgt', label: '${relations.action.text}' }, classes: 'autorotate' },
+		
+			document.addEventListener( 'DOMContentLoaded', function( ){
+				var cy = window.cy = cytoscape({
+					container: document.getElementById('cy'),
+					boxSelectionEnabled: false,
+					autounselectify: true,
+					layout: {
+						name: 'spread',
+						minDist: 100,
+						padding: 100
+					},
+					style: [{
+						selector: 'node',
+						style: {
+							'height': 40,
+							'width': 40,
+							'background-color': '#ccc',
+							'label': 'data(label)'
+						}
+					},{
+						selector: 'edge',
+						style: {
+							'label': 'data(label)',
+							'width': 3,
+							'line-color': '#ccc'
+						}
+					},{
+						selector: '.top-center',
+						style: {
+							'text-valign': 'center',
+							'text-halign': 'center'
+						}
+					},{
+						selector: '.autorotate',
+						style: {
+							'edge-text-rotation': 'autorotate'
+						}
+					}
+				],
+				elements: elem
+		});
+      });
+	/*]]>*/
+    </script>
+	</body>
+</html>
+
+<!DOCTYPE html>
+<html 
+	xmlns="http://www.w3.org/1999/xhtml" 
+	xmlns:th="http://www.thymeleaf.org"
+	xmlns:sec="http://www.thymeleaf.org/thymeleaf-extras-springsecurity3">
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+		<link rel="stylesheet" type="text/css" href="/css/semantic.css" />
+		<title>Login</title>
+	</head>
+	<body>
+		<div style="margin-top: 80px;"></div>
+		<div class="ui container">
+			<div class="ui one column centered grid">
+				<div class="eight wide column">
+					<h2 class="ui center aligned icon header">
+						<i class="circular book icon"></i>
+						<div class="content">
+							Wissen
+						</div>
+					</h2>
+					<div class="ui inverted raised segment">
+						<form th:action="@{/login}" method="post" class="ui inverted form" >
+							<div class="field">
+								<label>Username</label>
+								<input type="text" name="username"/>
+							</div>
+							<div class="field">
+								<label>Last Name</label>
+								<input type="password" name="password" />
+							</div>
+							<button class="ui button" type="submit">Sign In</button>
+						</form>
+					</div>
+				</div>
+			</div>
+		</div>
+		
+		<div class="ui basic segment center aligned">
+			<b>Seifernet 2016</b>
+		</div>
+		
+		<script src="https://code.jquery.com/jquery-2.2.4.min.js"></script>
+		<script src="/js/semantic.js"></script>
+	</body>
+</html>
+
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+		<link rel="stylesheet" type="text/css" href="/css/semantic.css" />
+		<title>Wissen</title>
+	</head>
+	<body>
+		
+		<div class="ui top menu">
+			<div class="header item">Wissen</div>
+			<div class="right menu">
+				<div class="ui right aligned category search item">
+					<div class="ui transparent icon input">
+						<input class="prompt" type="text" placeholder="Search flashcards..." />
+						<i class="search link icon"></i>
+					</div>
+					<div class="results"></div>
+				</div>
+			</div>
+		</div>
+		
+		
+		<h1 class="ui center aligned icon header">
+			<i class="circular book icon"></i>
+			<div class="content">
+				Wissen
+				<div class="sub header">Flashcards repository</div>
+			</div>
+		</h1>
+		
+		<div style="margin-top: 50px"></div>
+		
+		<div class="ui container">
+			<div class="ui two column centered grid">
+				<form class="ui form" action="/process" method="post">
+					<div class="field">
+						<input type="text" name="xurl" placeholder="URL" />
+						<input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
+					</div>
+					<button class="ui button" type="submit">Start</button>
+				</form>
+			</div>
+		</div>
+		
+		<div class="ui basic segment center aligned">
+			<b>Seifernet 2016</b>
+		</div>
+		
+		<script src="https://code.jquery.com/jquery-2.2.4.min.js"></script>
+		<script src="/js/semantic.js"></script>
+		<script>
+			$('.ui.dropdown')
+			  .dropdown()
+			;
+
+		</script>
+	</body>
+</html>
+
+
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+
+<th:block th:fragment="plant">
+    <div class="ui container">
+      <div class="ui one cards">
+        <div class="ui green card">
+          <div class="ui content">
+            <h2 class="ui icon header">
+              <i class="leaf icon greenicon"></i>
+              <div class="content">Office plant<div class="sub header">Last time it was watered: <span id="latest"></span></div></div>
+            </h2>
+            <p class="center aligned">
+              <button class="circular ui big blue icon button" onclick="irrigate('office')"><i class="icon theme"></i></button>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+    </th:block>
+    
+    <th:block th:fragment="task">
+    <div class="ui container">
+      <div class="ui one cards">
+        <div class="card">
+          <div class="ui top attached progress" id="taskcard">
+            <div class="bar"></div>
+          </div>
+          <div class="content">
+            <div class="header"><span id="tasktitle"></span></div>
+              <div class="meta">
+                <span id="taskcreationdate"></span>
+              </div>
+              <div class="description">
+                <p id="taskdescription"></p>
+                <div class="ui segment">
+                  <div class="ui checkbox">
+                    <input type="checkbox" name="example"/>
+                    <label>Make my profile visible</label>
+                  </div>
+                  <div class="ui checkbox">
+                    <input type="checkbox" name="example"/>
+                    <label>Make my profile visible</label>
+                  </div>
+                  <div class="ui checkbox">
+                    <input type="checkbox" name="example"/>
+                    <label>Make my profile visible</label>
+                  </div>
+                  <div class="ui checkbox">
+                    <input type="checkbox" name="example"/>
+                    <label>Make my profile visible</label>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="extra content">
+            </div>
+          </div>
+        </div>
+      </div>
+    </th:block>
+
+
+
+
+
+	
+	<h4 class="ui top attached header">Tasks <div class="ui basic tiny teal label">A 24</div><div class="ui basic tiny red label">E 12</div><div class="ui basic tiny yellow label">NDD 3</div></h4>
+      <div class="ui attached segment">
+        <div class="ui relaxed divided list">
+          <div class="item">
+            <div class="middle aligned right floated content"><div class="ui tiny teal label">12/01/2018 23:50</div></div>
+            <div class="middle aligned content"><i class="large square outline icon"></i> Morning checklist</div>
+            <div class="ui blue bottom attached progress success" data-percent="85">
+              <div class="bar"></div>
+            </div>
+          </div>
+          <div class="item">
+            <div class="middle aligned content"><i class="large checkmark box outline icon"></i> Clean the washroom</div>
+          </div>
+          <div class="item" onclick="$('#newtaskmod').modal('show');">
+            <div class="middle aligned content"><i class="large plus square outline icon"></i> Add a task</div>
+          </div>
+          <div class="item">
+            <div class="middle aligned content"><i class="large browser icon"></i> See all</div>
+          </div>
+        </div>
+      </div>
+	
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+		<link rel="stylesheet" type="text/css" href="/css/semantic.css" />
+		<title>Wissen</title>
+	</head>
+	<body>
+		
+		<div class="ui top menu">
+			<div class="header item">Wissen</div>
+			<div class="right menu">
+				<div class="ui right aligned category search item">
+					<div class="ui transparent icon input">
+						<input class="prompt" type="text" placeholder="Search flashcards..." />
+						<i class="search link icon"></i>
+					</div>
+					<div class="results"></div>
+				</div>
+			</div>
+		</div>
+		
+		
+		<h1 class="ui center aligned icon header">
+			<i class="circular book icon"></i>
+			<div class="content">
+				Wissen
+				<div class="sub header">Flashcards repository</div>
+			</div>
+		</h1>
+		
+		<div style="margin-top: 50px"></div>
+		
+		<div class="ui container">
+			<div class="ui breadcrumb">
+				<a class="section" href="/indetify" >Identify</a>
+			</div>
+			<table class="ui celled striped table">
+				<thead>
+					<tr><th colspan="3">Relations</th></tr>
+				</thead>
+				<tbody>
+					<th:block th:each="relation : ${relations}">
+						<tr>
+							<td class="collapsing" th:text="${relation.subject.text}"></td>
+							<td th:text="${relation.action.text}"></td>
+							<td th:text="${relation.other.text}"></td>
+						</tr>
+					</th:block>
+				</tbody>
+			</table>
+		</div>
+		
+		<div class="ui basic segment center aligned">
+			<b>Seifernet 2016</b>
+		</div>
+		
+		<script src="https://code.jquery.com/jquery-2.2.4.min.js"></script>
+		<script src="/js/semantic.js"></script>
+		<script>
+			$('.ui.dropdown')
+			  .dropdown()
+			;
+
+		</script>
+	</body>
+</html>
+
+
+
+
+
+	<canvas id="myCanvas" width="640" height="480" style="border:3px solid #979797; margin-left: 200px; margin-top: 20px"></canvas>
+	
+	<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+	<script src="/js/canvasengine.js"></script>
+	<script src="/js/canvasresources.js"></script>
+	<script src="/js/canvasobjects.js"></script>
+	<script>
+	
+	$('document').ready(function(){
+		var canvas = document.getElementById('myCanvas');
+		var ctx = canvas.getContext('2d');
+		
+		ctx.beginPath();
+		ctx.rect(0, 0, 640, 480);
+		ctx.fillStyle = "black";
+		ctx.fill();
+		
+		loadResources();
+		init(ctx);
+		
+		function gameLoop () {
+			window.requestAnimationFrame(gameLoop);
+			render(ctx);  
+		}
+		
+		gameLoop();
+		
+	});
+	
+	
+	const DIV_ELEM = "<div/>"
+const P_ELEM = "<p/>";
+const SPAN_ELEM = "<span/>";
+const FORM_ELEM = "<form/>";
+const H4_ELEM = "<h4/>";
+const INPUT_ELEM = "<input/>";
+const LABEL_ELEM = "<label/>"
+const TEXTAREA_ELEM = "<textarea/>";
+const BUTTON_ELEM = "<button/>";
+const I_ELEM = "<i/>";
+	
+const FLUID_CARD_CLASS = "ui fluid card";
+const HEADER_CLASS = "header";
+const META_CLASS = "meta";
+const DESCRIPTION_CLASS = "description";
+const CONTENT_CLASS = "content";
+const BASIC_LABEL_CLASS = "ui basic label";
+const COLUMN_CLASS = "column";
+const RIGHT_FLOATED_CLASS = "right floated";
+const EXTRA_CONTENT_CLASS = "extra content";
+const SIMPLE_SEGMENT_CLASS = "ui segment";
+const SECONDARY_SEGMENT_CLASS = "ui segment";
+const SIMPLE_FORM_CLASS = "ui form";
+const DIVIDING_HEADER_CLASS = "ui dividing header";
+const FIELD_CLASS = "field";
+const TWO_FIELD_CONTAINER_CLASS = "two fields";
+const CHECKBOX_CLASS = "ui checkbox";
+
+function createCard(color, headerText, metaText, descriptionContent, id){
+	var card = $(DIV_ELEM);
+	card.addClass(FLUID_CARD_CLASS);
+	
+	if(color != null){
+		card.addClass(color);
+	}
+	
+	var content = $(DIV_ELEM);
+	content.addClass(CONTENT_CLASS);
+	
+	content.append(
+		$(I_ELEM)
+			.addClass("right floated trash alternate outline icon")
+	)
+	content.append(
+		$(I_ELEM)
+			.addClass("right floated edit outline icon")
+	)
+	
+	content.append(
+		$(I_ELEM)
+			.addClass("right floated circle outline icon")
+			.attr("onclick", "completeActivity('" + id + "')")
+	)
+	
+	var header = $(DIV_ELEM);
+	header.addClass(HEADER_CLASS);
+	header.text(headerText);
+	
+	var meta = $(DIV_ELEM);
+	meta.addClass(META_CLASS);
+	var span = $(SPAN_ELEM);
+	span.text(metaText);
+	span.addClass(RIGHT_FLOATED_CLASS);
+	meta.append(span);
+
+	
+	var description = $(DIV_ELEM);
+	description.addClass(DESCRIPTION_CLASS);
+	if(description != null){
+		description.append(descriptionContent);
+	}
+	
+	content.append(header);
+	content.append(meta);
+	content.append(description);
+	
+	card.append(content);
+	return card;
+}
+
+function createNewTaskForm(){
+	var elem = $(DIV_ELEM);
+	elem.addClass(SECONDARY_SEGMENT_CLASS);
+	
+	var form = $(FORM_ELEM);
+	form.addClass(SIMPLE_FORM_CLASS);
+	form.append(
+		$(H4_ELEM)
+			.addClass(DIVIDING_HEADER_CLASS)
+			.text("New task")
+	);
+	
+	var titleField = $(DIV_ELEM);
+	titleField.addClass(FIELD_CLASS);
+	var titleInput = $(INPUT_ELEM);
+	titleInput.attr("type", "text");
+	titleInput.attr("name", "tasktitlef");
+	titleInput.attr("id", "tasktitlef");
+	titleInput.attr("placeholder", "Title");
+	titleInput.attr("maxlength", "24");
+	titleField.append(titleInput);
+	
+	var checkboxFieldContainer = $(DIV_ELEM);
+	checkboxFieldContainer.addClass(TWO_FIELD_CONTAINER_CLASS);
+	var descriptionChkField = $(DIV_ELEM);
+	descriptionChkField.addClass(FIELD_CLASS);
+	var descriptionCheckbox = $(INPUT_ELEM);
+	descriptionCheckbox.attr("type", "checkbox");
+	descriptionCheckbox.attr("name", "taskdescneededf");
+	descriptionCheckbox.attr("id", "taskdescneededf");
+	descriptionCheckbox.attr("onchange", "toggleNewTaskDesc()");
+	descriptionCheckbox.attr("checked", "true");
+	descriptionChkField.append(
+		$(DIV_ELEM)
+			.addClass(CHECKBOX_CLASS)
+			.append(descriptionCheckbox)
+			.append(
+				$(LABEL_ELEM)
+					.text("Description needed?")
+					.attr("for", "taskdescneededf")
+			)
+	);
+	var expirationChkField = $(DIV_ELEM);
+	expirationChkField.addClass(FIELD_CLASS);
+	var expirationCheckbox = $(INPUT_ELEM);
+	expirationCheckbox.attr("type", "checkbox");
+	expirationCheckbox.attr("name", "taskexpiresf");
+	expirationCheckbox.attr("id", "taskexpiresf");
+	expirationCheckbox.attr("onchange", "toggleExpireDate()");
+	expirationCheckbox.attr("checked", "true");
+	expirationChkField.append(
+		$(DIV_ELEM)
+			.addClass(CHECKBOX_CLASS)
+			.append(expirationCheckbox)
+			.append(
+				$(LABEL_ELEM)
+					.text("Expires?")
+					.attr("for", "taskexpiresf")
+			)
+	);
+	checkboxFieldContainer.append(descriptionChkField);
+	checkboxFieldContainer.append(expirationChkField);
+	
+	var descriptionField = $(DIV_ELEM);
+	descriptionField.attr("id", "taskdescfieldf");
+	descriptionField.addClass(FIELD_CLASS);
+	descriptionField.append(
+		$(TEXTAREA_ELEM)
+			.attr("rows", "2")
+			.attr("name", "taskdescf")
+			.attr("id", "taskdescf")
+			.attr("placeholder", "Details")
+	);
+	
+	var datesFieldContainer = $(DIV_ELEM);
+	datesFieldContainer.addClass(TWO_FIELD_CONTAINER_CLASS);
+	datesFieldContainer.append(
+		$(DIV_ELEM)
+			.addClass(FIELD_CLASS)
+			.append(
+				$(LABEL_ELEM)
+					.text("Due date")
+			)
+			.append(
+				$(INPUT_ELEM)
+					.attr("type", "datetime-local")
+					.attr("name", "taskduedatef")
+					.attr("id", "taskduedatef")
+			)			
+	);
+	datesFieldContainer.append(
+		$(DIV_ELEM)
+			.addClass(FIELD_CLASS)
+			.attr("id", "taskexpirationdatefieldf")
+			.append(
+				$(LABEL_ELEM)
+					.text("Expiration date")
+			)
+			.append(
+				$(INPUT_ELEM)
+					.attr("type", "datetime-local")
+					.attr("name", "taskexpirationdatef")
+					.attr("id", "taskexpirationdatef")
+			)			
+	);
+	
+	
+	form.append(titleField);
+	form.append(checkboxFieldContainer);
+	form.append(descriptionField);
+	form.append(datesFieldContainer);
+	form.append(
+		$(BUTTON_ELEM)
+			.addClass("ui right floated small button")
+			.attr("type", "button")
+			.attr("onclick", "createTask()")
+			.text("Create task")
+	);
+	
+	elem.append(form);
+	return elem;
+}
+
+function createTag(color, content, size){
+	var tag = $(DIV_ELEM);
+	tag.addClass(BASIC_LABEL_CLASS);
+	tag.addClass(RIGHT_FLOATED_CLASS);
+	
+	if(color != null){
+		tag.addClass(color);
+	}
+	
+	if(size != null){
+		tag.addClass(size);
+	}
+	
+	tag.text(content);
+	return tag;
+}
+
+function createColumn(){
+	var column = $(DIV_ELEM);
+	column.addClass(COLUMN_CLASS);
+	return column;
+}
+
+function createParagraph(text){
+	var paragraph = $(P_ELEM);
+	paragraph.text(text);
+	return paragraph;
+}
+
+/**
+ *  Utility function to format date values to compact 3 digit time difference from current date
+ */
+function dateToStringCompact(a,b){
+	var milis = a.getTime() - b.getTime();
+	
+	if(milis > 31536000000) {
+		return (Math.trunc(milis/31536000000)).pad(2) + "y";
+	} else if(milis > 2592000000) {
+		return (Math.trunc(milis/2592000000)).pad(2) + "M";
+	} else if(milis > 86400000) {
+		return (Math.trunc(milis/86400000)).pad(2) + "d";
+	} else if(milis > 3600000){
+		return (Math.trunc(milis/3600000)).pad(2) + "h";
+	} else if(milis > 60000){
+		return (Math.trunc(milis/60000)).pad(2) + "m";
+	} else {
+		return "ovd";
+	}
+}
+
+/**
+ *  Utility function to format date values to compact 3 digit time difference from current date
+ */
+function dateToString(a,b){
+	var milis = a.getTime() - b.getTime();
+	
+	if(milis > 31536000000) {
+		if(Math.trunc(milis/31536000000) > 1){
+			return  (Math.trunc(milis/31536000000)) + " years"
+		} else {
+			return "1 year";
+		}
+	} else if(milis > 2592000000) {
+		if(Math.trunc(milis/2592000000) > 1){
+			return  (Math.trunc(milis/2592000000)) + " months"
+		} else {
+			return "1 month";
+		}
+	} else if(milis > 86400000) {
+		if(Math.trunc(milis/86400000) > 1){
+			return  (Math.trunc(milis/86400000)) + " days"
+		} else {
+			return "1 day";
+		}
+	} else if(milis > 3600000){
+		if(Math.trunc(milis/3600000) > 1){
+			return  (Math.trunc(milis/3600000)) + " hours"
+		} else {
+			return "1 hour";
+		}
+	} else if(milis > 60000){
+		if(Math.trunc(milis/60000) > 1){
+			return  (Math.trunc(milis/60000)) + " minutes"
+		} else {
+			return "1 minute";
+		}
+	} else {
+		return "seconds";
+	}
+}
+
+/**
+ * Utility function to format date values
+ * 
+ * @param fdate
+ * @returns
+ */
+function formatDate(fdate){
+	var providedDate = new Date(fdate);
+	return (providedDate.getMonth()+1).pad(2) + "/"+(providedDate.getDate()).pad(2)+"/"+providedDate.getFullYear() + " " + (providedDate.getHours()).pad(2) + ":"+(providedDate.getMinutes()).pad(2);
+}
+
+
+/** Load of general page elements **/
+function refreshGenericPageElements(validToken){
+	if(validToken){
+		$("#authuser").text($.cookie("authuser"));
+		
+		$("#authuseritem").attr('onclick','').unbind('click');
+		var usermenu = $("<div></div>");
+		$("#authuseritem").children("div").remove();
+		usermenu.addClass("menu");
+		$("#authuseritem").append(usermenu);
+		
+		var expensesItem = $("<div></div>");
+		expensesItem.addClass("item");
+		expensesItem.append($("<a href='/expenses'>Expenses</a>"));
+		usermenu.append(expensesItem);
+		
+		var dashboardItem = $("<div></div>");
+		dashboardItem.addClass("item");
+		dashboardItem.append($("<a href='/dashboard'>Dashboard</a>"));
+		usermenu.append(dashboardItem);
+		
+		usermenu.append("<div class='divider'></div>");
+		
+		var logoutItem = $("<div></div>");
+		logoutItem.addClass("item");
+		logoutItem.append($("<span onclick='logout()'>Logout</span>"));
+		usermenu.append(logoutItem);
+		
+		$("#authuseritem").addClass("dropdown");
+		$('.ui.dropdown').dropdown();
+		
+	} else {
+		$("#authuseritem").attr('onclick','').unbind('click');
+		var bck = $('<div id="authuseritem"></div>');
+		bck.addClass('ui right item');
+		bck.click(function(){showAuthModal("menuButton")});
+		bck.append('<i class="large user circle outline icon"></i><span id="authuser">Anonymous</span>');
+		$("#authuseritem").replaceWith(bck);
+	}
+}
+
+
+var globalTimeOut = null;
+
+
+
+
+
+
+
+function completeActivity(id){
+	$.ajax({
+		type: 'PATCH',
+		url: "/api/tasks/"+id,
+		headers: {
+			"Authorization" : "Bearer " + $.cookie("authtoken")
+		},
+		contentType: "application/json; charset=utf-8",
+		data: '{"completed":"true"}',
+		error: function(XMLHttpRequest, textStatus, errorThrown) {
+			console.log(textStatus);
+			console.log(XMLHttpRequest);
+		},
+		success: function(resultData) {
+			validateToken(refreshPageElements);
+		}
+	});
+}
+
+function showTaskButtons(id){
+	var elem = $("#col" + id);
+	elem.unbind('touchstart');
+	elem.children(".ui.checkbox").children("label").unbind('click');
+	elem.children(".label").transition('fade left');
+	setTimeout(function(){
+		elem.children(".button").transition('fade left');
+	}, 270);
+}
+
+function hideTaskButtons(id){
+	var elem = $("#col" + id);
+	elem.bind('touchstart', function(){catchTaskHold(id)});
+	elem.bind('touchend',function(){catchTaskRelease(id)});
+	elem.unbind('click');
+	elem.children(".button").transition('fade left');
+	setTimeout(function(){
+		elem.children(".label").transition('fade left');
+	}, 270);
+	elem.children(".ui.checkbox").children("label").click(function(){showTaskModal(id)});
+}
+
+function catchTaskHold(id){
+	globalTimeOut = setTimeout(function(){showTaskButtons(id)}, 1500);
+}
+
+function catchTaskRelease(id){
+	var elem = $("#col" + id);
+	if(elem.children(".label").hasClass("hidden")){
+		elem.unbind('touchend');
+		elem.unbind('click');
+		setTimeout(function(){elem.click(function(){hideTaskButtons(id)});}, 10);
+	}
+	clearTimeout(globalTimeOut);
+}
+
+function toggleNewTaskDesc(){
+  if($("#taskdescfieldf").hasClass("hiddenf")){
+    $("#taskdescfieldf").removeClass("hiddenf");
+  } else {
+    $("#taskdescfieldf").addClass("hiddenf");
+  }
+}
+
+function toggleExpireDate(){
+  if($("#taskexpirationdatefieldf").hasClass("hiddenf")){
+    $("#taskexpirationdatefieldf").removeClass("hiddenf");
+  } else {
+    $("#taskexpirationdatefieldf").addClass("hiddenf");
+  }
+}
+
+/**
+ * Process task creation
+ */
+function createTask(tokenValidation){
+	var titlef = $("#tasktitlef").val().trim();
+	var descrequiredf = false;
+	var descriptionf = null;
+	if($("#taskdescneededf").is(":checked")){
+		descrequiredf = true;
+		descriptionf = $("#taskdescf").val().trim();
+	}
+	var duedatef = $("#taskduedatef").val();
+	
+	var expiresf = false;
+	var expirationdatef = null;
+	if($("#taskexpiresf").is(":checked")){
+		expiresf = true;
+		expirationdatef = $("#taskexpirationdatef").val();
+	}
+	
+	//TODO data validation
+	
+	var datax = {
+			title : titlef,
+			descriptionRequired : descrequiredf,
+			description : descriptionf,
+			dueDate : (new Date(duedatef)).getTime(),
+			completed : false,
+			creationDate : Date.now(),
+			expires : expiresf,
+			expirationDate : (new Date(expirationdatef)).getTime(),
+			active : true,
+			owner : $.cookie("authuser"),
+			expired : false,
+			priority : "-1"
+		};
+	
+	console.log(datax);
+	$.ajax({
+		type: 'POST',
+		url: "/api/tasks",
+		headers: {
+			"Authorization" : "Bearer " + $.cookie("authtoken")
+		},
+		contentType: "application/json; charset=utf-8",
+		data: JSON.stringify(datax),
+		error: function(XMLHttpRequest, textStatus, errorThrown) {
+			console.log(textStatus);
+			console.log(XMLHttpRequest);
+		},
+		success: function(resultData) {
+			validateToken(refreshPageElements);
+			$('#newtaskmod').modal('hide');
+			
+		}
+	});
+}
+
+function loadAuthContent(){
+	
+	$("#maingridauth").removeClass("hiddenf");
+	$("#maingrid").addClass("hiddenf");
+	
+	$.ajax({
+		type: 'GET',
+		url: "/api/tasks/search/taskscompletedtoday" +
+				"?owner=" + $.cookie("authuser") + 
+				"&startdate=06-12-2018/00-00"+
+				"&enddate=06-12-2018/23-59",
+				
+		contentType: "application/json; charset=utf-8",
+		headers: {
+			"Authorization" : "Bearer " + $.cookie("authtoken"),
+		},
+		error: function(XMLHttpRequest, textStatus, errorThrown) {
+			console.log(textStatus);
+			console.log(XMLHttpRequest);
+		},
+		success: function(responseData) {
+			var ctasks = responseData;
+			console.log(ctasks);
+			$.ajax({
+				type: 'GET',
+				url: "/api/tasks/search/duedatecountbydaterange" +
+						"?owner=" + $.cookie("authuser") + 
+						"&startdate=06-13-2018/00-00"+
+						"&enddate=06-13-2018/23-59",
+						
+				contentType: "application/json; charset=utf-8",
+				headers: {
+					"Authorization" : "Bearer " + $.cookie("authtoken"),
+				},
+				error: function(XMLHttpRequest, textStatus, errorThrown) {
+					console.log(textStatus);
+					console.log(XMLHttpRequest);
+				},
+				success: function(responseData) {
+					console.log(responseData);
+					console.log((100/responseData)*ctasks);
+					$('.progress').progress({percent:((100/responseData)*ctasks)});
+				}
+			});
+		}
+	});
+	
+	
+	
+	$.ajax({
+		type: 'GET',
+		url: "/api/tasks/search/mytasks" +
+				"?owner=" + 
+				$.cookie("authuser") + 
+				"&page=0&size=30",
+		contentType: "application/json; charset=utf-8",
+		headers: {
+			"Authorization" : "Bearer " + $.cookie("authtoken"),
+		},
+		error: function(XMLHttpRequest, textStatus, errorThrown) {
+			console.log(textStatus);
+			console.log(XMLHttpRequest);
+		},
+		success: function(responseData) {
+			var columns = [];
+			columns[0] = createColumn();
+			columns[1] = createColumn();
+			
+			var colCount = 1;
+			columns[0].append(createNewTaskForm());
+			responseData._embedded.tasks.forEach(function(entry){
+				var labels = [];
+				var dueDateLabel = createTag(getLabelColor(entry.dueDate), "DD " + formatDate(entry.dueDate), "tiny");
+				labels.push(dueDateLabel);
+				
+				if(entry.expires){
+					var expireDateLabel = createTag(getLabelColor(entry.expirationDate), "ED " + formatDate(entry.expirationDate), "tiny");
+					labels.push(expireDateLabel);
+				}
+				
+				var description = null;
+				if(entry.descriptionRequired){
+					description = createParagraph(entry.description);
+				}
+				
+				var metaText = dateToString(new Date(), new Date(entry.creationDate)) + " ago";
+				var card = createCard(null, entry.title, metaText, description, entry.identifier);
+				if(colCount < 3){
+					columns[1].append(card);
+				} else{ 
+					columns[colCount%2].append(card);
+				}
+				colCount++;
+			});
+			
+			var row = $("#xtasks");
+			row.empty();
+			row.append(columns[0]);
+			row.append(columns[1]);
+		}
+	});
+}
+
+function loadAnonContent(){
+	$("#authuser").text("Anonymous");
+	$("#maingrid").removeClass("hidden");
+	$("#maingridauth").addClass("hiddenf");
+}
+
+function showNewTaskModal(){
+	$('#newtaskmod').modal('show');
+}
+
+
+$( '.ui.search' ).search( {
+	type          : 'category',
+	minCharacters : 3,
+	apiSettings   : {
+		onResponse: function( apiResponse ) {
+			var response = {
+				results : {}
+			};
+			$.each( apiResponse._embedded.flashcards, function( index, item ) {
+				alert( item.question );
+				var maxResults = 10;
+				var category = item.category || 'Misc';
+
+				if( index >= maxResults ) {
+					return false;
+				}
+
+				if( response.results[ category ] === undefined ) {
+					response.results[ category ] = {
+							name    : category,
+							results : []
+					};
+				}
+
+				response.results[ category ].results.push( {
+					title       : item.question,
+					description : item.answer,
+					url         : item._links.self.href
+				});
+			});
+			return response;
+		},
+		url: '/api/flashcards/search/findByQuestionLikeIgnoreCase?question={query}'
+	}
+});
+
+
+
+
+$.ajax({
+	type: 'GET',
+	url: "/api/irrigationRecords/search/findTop1ByOrderByDateDesc",
+	contentType: "application/json; charset=utf-8",
+	error: function(XMLHttpRequest, textStatus, errorThrown) {
+		console.log(textStatus);
+		console.log(XMLHttpRequest);
+		$("#latest").text("no data available");
+		$("#latest").addClass("redstatus");
+	},
+	success: function(resultData) {
+		var x = document.getElementById("latest");
+		if(x != null){
+			if(resultData != null){
+				var lDate = new Date(resultData.date);
+				var cDate = new Date();
+				var diff = (cDate.getTime()-lDate.getTime())/1000/60/60;
+				$("#latest").text(parseFloat(diff).toFixed(2) + " hours ago");
+				if(diff > 48){
+					$("#latest").addClass("redstatus");
+				}
+				else {
+					$("#latest").addClass("greenstatus");
+				}
+			}
+			else {
+				$("#latest").text("no data available");
+				$("#latest").addClass("redstatus");
+			}
+		}
+	}
+});
+
+
+var balance = 0.0;
+
+function updateBalance(){
+	$("#balanceval").text(balance.toFixed(2));
+	if(balance == 0){
+		$("#balancest").removeClass("teal");
+		$("#balancest").removeClass("red");
+		$("#balancest").addClass("yellow");
+		
+		$("#balanceseg").removeClass("teal");
+		$("#balanceseg").removeClass("red");
+		$("#balanceseg").addClass("yellow");
+	} else if(balance > 0){
+		$("#balancest").removeClass("yellow");
+		$("#balancest").removeClass("red");
+		$("#balancest").addClass("teal");
+		
+		$("#balanceseg").removeClass("yellow");
+		$("#balanceseg").removeClass("red");
+		$("#balanceseg").addClass("teal");
+	} else {
+		$("#balancest").removeClass("yellow");
+		$("#balancest").removeClass("teal");
+		$("#balancest").addClass("red");
+		
+		$("#balanceseg").removeClass("yellow");
+		$("#balanceseg").removeClass("teal");
+		$("#balanceseg").addClass("red");
+	}
+}
+
+function loadAuthContent(){
+	getBankAccount();
+	getCurrentTransactions();
+}
+
+function loadAnonContent(){
+	
+}
+
+function getBankAccount(){
+	console.log("yes");
+	$.ajax({
+		type: 'GET',
+		url: "/api/records/search/findByOwnerAndType" +
+				"?owner=" + $.cookie("hashuser") + 
+				"&type=ASSET_BANK_ACCOUNT",
+		contentType: "application/json; charset=utf-8",
+		headers: {
+			"Authorization" : "Bearer " + $.cookie("authtoken"),
+		},
+		error: function(XMLHttpRequest, textStatus, errorThrown) {
+			console.log("yes");
+			if(XMLHttpRequest.responseStatus === 404) {
+				$("#bankaccount").text("No info");
+				$("#banksegment").append("<button class='ui button' id='addbankbtn' onclick='toggleBankAccountModal()'>Add bank account data</button>")
+			}
+			console.log(textStatus);
+			console.log(XMLHttpRequest);
+		},
+		success: function(responseData) {
+			balance += parseFloat(responseData.value);
+			updateBalance();
+			$("#bankaccount").text(responseData.value.toFixed(2) + " MXN");
+		}
+	});
+}
+
+function createTableFromList(list, size, title){
+	var table = $("<table class='ui striped compact table'></table>");
+	var theader = $("<thead><tr><th colspan=" + size + ">Expenses</th></tr></thead>");
+	var tcontent = $("<tbody></tbody>");
+	list.forEach(function(entry){
+		tcontent.append(
+			"<tr><td class='collapsing'><i class='shopping cart icon'></i> " +
+			entry.description +
+			"</td><td>" +
+			entry.value +
+			" MXN</td><td class='right aligned collapsing'>" +
+			formatDate(entry.date) +
+			"</td></tr>"
+		);
+	});
+	table.append(theader);
+	table.append(tbody);
+}
+
+function getCurrentTransactions(){
+	$.ajax({
+		type: 'GET',
+		url: "/api/transactions/search/expensesinperiod" +
+				"?owner=" + $.cookie("hashuser") + 
+				"&start=12-01-2018-00-00"+
+				"&end=12-30-2018-23-59",
+		contentType: "application/json; charset=utf-8",
+		headers: {
+			"Authorization" : "Bearer " + $.cookie("authtoken"),
+		},
+		error: function(XMLHttpRequest, textStatus, errorThrown) {
+			if(XMLHttpRequest.responseStatus === 404) {
+				console.log("no expenses");
+			}
+			console.log(textStatus);
+			console.log(XMLHttpRequest);
+		},
+		success: function(responseData) {
+			if(responseData._embedded.transactions.length == 0){
+				$("#maintable").append("<tr class='positive'><td colspan='3'><i class='check square outline icon'></i> You don't have expenses this month</td></tr>");
+			}else {
+				responseData._embedded.transactions.forEach(function(entry){
+					balance -= parseFloat(entry.value);
+					$("#maintable").append(
+						"<tr><td class='collapsing'><i class='shopping cart icon'></i> " +
+						entry.description +
+						"</td><td>" +
+						entry.value.toFixed(2) +
+						" MXN</td><td class='right aligned collapsing'>" +
+						formatDate(entry.date) +
+						"</td></tr>"
+					);
+				});
+			}
+			updateBalance()
+		}
+	});
+}
+
+function toggleBankAccountModal(){
+	$("#bankmodal").modal("show");
+}
+
+function toggleNewExpenseModal(){
+	$("#expensemod").modal("show");
+}
+
+function registerBankAccount(){
+	var amount = $("#bankbalance").val();
+	
+	var datax = {
+			owner : $.cookie("hashuser"),
+			value : amount,
+			description : "Bank account balance}",
+			type : "ASSET_BANK_ACCOUNT",
+			date : Date.now()
+		};
+	
+	console.log(datax);
+	$.ajax({
+		type: 'POST',
+		url: "/api/records",
+		headers: {
+			"Authorization" : "Bearer " + $.cookie("authtoken")
+		},
+		contentType: "application/json; charset=utf-8",
+		data: JSON.stringify(datax),
+		error: function(XMLHttpRequest, textStatus, errorThrown) {
+			console.log(textStatus);
+			console.log(XMLHttpRequest);
+		},
+		success: function(resultData) {
+			$("#bankbalance").val("");
+			$("#bankmodal").modal("hide");
+			validateToken();
+			$("#addbankbtn").remove();
+			
+		}
+	});
+	
+}
+
+
+
+function loadAuthContent(){
+	retrieveActiveGoals();
+}
+
+function loadAnonContent(){
+	
+}
+
+function retrieveActiveGoals(){
+	$.ajax({
+		type: 'GET',
+		url: "/api/goals/search/mygoals" +
+				"?owner=" + $.cookie("hashuser"),
+		contentType: "application/json; charset=utf-8",
+		headers: {
+			"Authorization" : "Bearer " + $.cookie("authtoken"),
+		},
+		error: function(XMLHttpRequest, textStatus, errorThrown) {
+			console.log(textStatus);
+			console.log(XMLHttpRequest);
+		},
+		success: function(responseData) {
+			console.log(responseData);
+			$("#goallist").empty();
+			responseData.content.forEach(function(entry){
+				$("#goallist").append("<li>" + entry.title+ " " + entry.date + "</li>" );
+			});
+		}
+	});
+}
+
+function addGoal(goal){
+	$.ajax({
+		type: 'POST',
+		url: "/api/goals",
+		headers: {
+			"Authorization" : "Bearer " + $.cookie("authtoken")
+		},
+		contentType: "application/json; charset=utf-8",
+		data: JSON.stringify(goal),
+		error: function(XMLHttpRequest, textStatus, errorThrown) {
+			console.log(textStatus);
+			console.log(XMLHttpRequest);
+		},
+		success: function(responseData) {
+			console.log(responseData);
+		}
+	});
+}
+
+function prepareGoalData(){
+	
+	var goal = {
+		"owner" : $.cookie("hashuser"),
+		"date" : Date.now(),
+		"title" : $("#goaltitle").val(),
+		"active" : true
+	}
+	
+	addGoal(goal);
+	retrieveActiveGoals();
+}
+
+
+const CHARACTER = 0;
+const TILESET = 1;
+const CAULDRON = 2;
+
+var resources = [];
+
+resources[CHARACTER] = {
+	type : "image",
+	src : "/img/character.png",
+	loaded : false,
+	object : null,
+	spritemap : {
+		standing : [ 
+			[0,0],
+			[84,0],
+			[168,0],
+			[252,0]
+		],
+		down : [
+			[336,0],
+			[420,0],
+			[504,0],
+			[588,0],
+			[0,84]
+		],
+		up : [
+			[84,84],
+			[168,84],
+			[252,84],
+			[336,84],
+			[420,84]
+		],
+		right : [
+			[504,84],
+			[588,84],
+			[0,168],
+			[84,168],
+			[168,168],
+			[252,168]
+		],
+		left : [
+			[336,168],
+			[420,168],
+			[504,168],
+			[588,168],
+			[0,252],
+			[84,252]
+		]
+	}
+};
+
+resources[TILESET] = {
+	type : "image",
+	src : "/img/tileset.png",
+	loaded : false,
+	object : null
+};
+
+resources[CAULDRON] = {
+	type : "image",
+	src : "/img/boil.png",
+	loaded : false,
+	object : null
+};
+
+function loadResources(){
+	resources.forEach(function(element){
+		if(element.type == "image"){
+			element.object = new Image();
+			element.object.src = element.src;
+			element.object.addEventListener("load", function(){	
+				element.loaded = true;
+			});
+		}
+	});
+}
+	
+
+
+var MAIN_CHARACTER = 0;
+var BACKGROUND_TILE = 1;
+var CAULDRON_SPRITE = 2;
+
+var objects = [];
+
+objects[MAIN_CHARACTER] = {
+	context : null,
+	resource : CHARACTER,
+	sizeX : 84,
+	sizeY : 84,
+	currentPosX : 32,
+	currentPosY : 32,
+	ticksPerFrame : 7,
+	frameIndex : 0,
+	tickCount : 0,
+	currentmap : null,
+	direction : "center",
+	init : function(context){
+		this.context = context;
+		var that = this;
+		layers[OBJECTS].push(this);
+		this.currentmap = resources[this.resource].spritemap.standing;
+		
+		events[A_KEY].push(function(){
+			if(that.currentPosX > BORDER_SIZE)
+				that.currentPosX -= STEP_SIZE;
+			
+			if(that.direction != "left"){
+				that.direction = "left";
+				that.currentmap = resources[that.resource].spritemap.left;
+				that.frameIndex = 0;
+			}
+		});
+		events[W_KEY].push(function(){
+			if(that.currentPosY > BORDER_SIZE)
+				that.currentPosY -= STEP_SIZE;
+			if(that.direction != "up"){
+				that.direction = "up";
+				that.currentmap = resources[that.resource].spritemap.up;
+				that.frameIndex = 0;
+			}
+		});
+		events[D_KEY].push(function(){
+			if(that.currentPosX < MAP_SIZE_X - that.sizeX - BORDER_SIZE)
+				that.currentPosX += STEP_SIZE;
+			if(that.direction != "right"){
+				that.direction = "right";
+				that.currentmap = resources[that.resource].spritemap.right;
+				that.frameIndex = 0;
+			}
+		});
+		events[S_KEY].push(function(){
+			if(that.currentPosY < MAP_SIZE_Y - that.sizeY - BORDER_SIZE)
+				that.currentPosY += STEP_SIZE;
+			if(that.direction != "down"){
+				that.direction = "down";
+				that.currentmap = resources[that.resource].spritemap.down;
+				that.frameIndex = 0;
+			}
+		});
+	},
+	reset: function(){
+		var that = this;
+		setTimeout(function(){
+			that.frameIndex = 0;
+			that.currentmap = resources[that.resource].spritemap.standing;
+			that.direction = "center";
+		}, 200);
+	},
+	draw : function() {
+		if(resources[this.resource].loaded)
+			this.context.drawImage(
+				resources[this.resource].object, 
+				this.currentmap[this.frameIndex][0], 
+				this.currentmap[this.frameIndex][1],
+				this.sizeX,
+				this.sizeY,
+				this.currentPosX,
+				this.currentPosY,
+				80,
+				80
+			);
+	},
+	update : function() {
+		this.tickCount += 1;
+		if (this.tickCount > this.ticksPerFrame) {
+			this.tickCount = 0;
+			console.log(this.currentmap.length)
+			if (this.frameIndex < this.currentmap.length - 1) {
+				this.frameIndex += 1;
+			} else {
+				this.frameIndex = 0;
+			}
+		}
+	}
+};
+
+objects[BACKGROUND_TILE] = {
+	context : null,
+	resource : TILESET,
+	init : function(context){
+		this.context = context;
+		layers[BACKGROUND].push(this);
+	},
+	imageSizeX : 32,
+	imageSizeY : 32,
+	srcPosX : 96,
+	srcPosY : 288,
+	draw : function() {
+		if(resources[this.resource].loaded){
+			for(var i = 1; i < (MAP_SIZE_X / 32)-1; i++){
+				for(var j = 1; j < (MAP_SIZE_Y / 32)-1; j ++){
+					this.context.drawImage(
+						resources[this.resource].object, 
+						this.srcPosX, 
+						this.srcPosY,
+						this.imageSizeX,
+						this.imageSizeY,
+						i*32,
+						j*32,
+						this.imageSizeX,
+						this.imageSizeY
+					);
+				}
+			}
+		}
+	},
+	update : function() {}
+};
+
+objects[CAULDRON_SPRITE] = {
+	context : null,
+	resource : CAULDRON,
+	init : function(context){
+		this.context = context;
+		layers[FOREGROUND].push(this);
+	},
+	imageSizeX : 32,
+	imageSizeY : 32,
+	srcPosX : 0,
+	srcPosY : 0,
+	ticksPerFrame : 7,
+	frameIndex : 0,
+	frameSize : 3,
+	tickCount : 0,
+	draw : function() {
+		if(resources[this.resource].loaded)
+			this.context.drawImage(
+				resources[this.resource].object, 
+				this.srcPosX, 
+				this.srcPosY + (this.frameIndex * this.imageSizeY),
+				this.imageSizeX,
+				this.imageSizeY,
+				192,
+				128,
+				this.imageSizeX,
+				this.imageSizeY
+			);
+	},
+	update : function() {
+		this.tickCount += 1;
+		if (this.tickCount > this.ticksPerFrame) {
+			this.tickCount = 0;
+			if (this.frameIndex < this.frameSize) {
+				this.frameIndex += 1;
+			} else {
+				this.frameIndex = 0;
+			}
+		}
+	}
+};
+
+
+const A_KEY = 97;
+const W_KEY = 119;
+const D_KEY = 100;
+const S_KEY = 115;
+
+var registeredKeys = [
+	97, 119, 100, 115
+];
+
+const MAP_SIZE_X = 640;
+const MAP_SIZE_Y = 480;
+const BORDER_SIZE = 32;
+const STEP_SIZE = 8;
+
+var events = [];
+events[A_KEY] = [];
+events[W_KEY] = [];
+events[D_KEY] = [];
+events[S_KEY] = [];
+
+const BACKGROUND = 0;
+const FOREGROUND = 1;
+const OBJECTS = 2;
+const LAYER_SIZE = 3;
+
+var layers = [];
+layers[BACKGROUND] = [];
+layers[FOREGROUND] = [];
+layers[OBJECTS] = [];
+
+function render(context){
+	context.clearRect(32, 32, MAP_SIZE_X - 64, MAP_SIZE_Y - 64);
+
+	for(var i = 0; i < LAYER_SIZE; i++){
+		for(var j = 0; j < layers[i].length; j++){
+			layers[i][j].update();
+			layers[i][j].draw();
+		}
+	}
+}
+
+function init(context){
+	objects.forEach(function(element){
+		element.init(context);
+	});
+}
+
+$("body").keypress(
+	function(event) {
+		if(registeredKeys.includes(event.which)){
+			event.preventDefault();
+			for(var i = 0; i < events[event.which].length; i++){
+				events[event.which][i]();
+			}	
+		}
+	}
+);
+
+$("body").keyup(function(event) {
+	event.preventDefault();
+	objects[MAIN_CHARACTER].reset();
+});
+
+
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+    <link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.3.1/semantic.css" />
+    <link rel="stylesheet" type="text/css" href="/css/cv.css" />
+    
+    <title>Cuauhtemoc Herrera (Seiferson)</title>
+  </head>
+  <body>
+    
+    <div class="ui container">
+      <div class="ui grid stackable">
+        <div class="row">
+          <div class="sixteen wide column middle aligned">
+            <h1 class="ui huge header centered">
+              <i class="code icon"></i>Cuauhtémoc Herrera
+            </h1>
+          </div>
+        </div> 
+      </div>
+      <div class="ui grid">
+        <div class="row">
+          <div class="right floated ten wide column">
+            <div class="ui message">
+              <div class="header">B.S. in Computer Engineering / Software Development Engineer</div>
+              <p>
+                Software developer with 5 years of experience on integration, web technologies, systems design/implementation and software development. 
+                Enthusiast for free software and open source platforms. 
+                Currently based on México and open to opportunities to grow and learn. 
+              </p>
+            </div>
+          </div>
+        </div>
+        <div class="row">
+          <div class="sixteen wide column">
+            <div class="ui segment">
+              <h3 class = "ui dividing header">Personal info</h3>
+              <div class="ui list">
+                <div class="item">
+                  <i class="user circle icon"></i>
+                  <div class="content">
+                    <div class="header">Name</div>
+                    <div class="description">Cuauhtémoc Herrera Muñoz</div>
+                  </div>
+                </div>
+                <div class="item">
+                  <i class="phone icon"></i>
+                  <div class="content">
+                    <div class="header">Phone</div>
+                    <div class="description"></div>
+                  </div>
+                </div>
+                <div class="item">
+                  <i class="map marker icon"></i>
+                  <div class="content">
+                    <div class="header">Nationality</div>
+                    <div class="description">México citizen</div>
+                  </div>
+                </div>
+                <div class="item">
+                  <i class="envelope icon"></i>
+                  <div class="content">
+                    <div class="header">Email</div>
+                    <div class="description">seifer.ch@gmail.com</div>
+                  </div>
+                </div>
+                <div class="item">
+                  <i class="github icon"></i>
+                  <div class="content">
+                    <div class="header">Github</div>
+                    <div class="description"><a href="https://github.com/seiferxx">seiferxx</a></div>
+                  </div>
+                </div>
+                <div class="item">
+                  <i class="graduation cap icon"></i>
+                  <div class="content">
+                    <div class="header">Education</div>
+                    <div class="description">B.S. in Computer Engineering at Universidad de Guadalajara from August 2010 to June 2014</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="ui segment">
+              <h3 class = "ui dividing header">Professional experience</h3>
+              <div class="ui list">
+                <div class="item">
+                  <img class="ui avatar image" src="/img/amdocs.jpg">
+                  <div class="content">
+                    <div class="header">Amdocs</div>
+                    <div class="description">
+                      <p>
+                        Software Development Engineer<br/>
+                        From November 2016 to present<br/><br/>
+                        
+                        I'm currently working at the AT&T USA Enterprise and AT&T Mexico projects, providing <br/>
+                        features development and support for the ordering system.
+                        
+                        <br><br>
+                        <b>Key aspects</b>
+                        <ul>
+                          <li>Java application development/testing/deployment/support cycle</li>
+                          <li>Support of production and pre-production applications</li>
+                          <li>Implementation of daily work tools and automation</li>
+                        </ul>
+                        
+                        <b>Technologies used</b>
+                        <ul>
+                          <li>Spring, J2EE </li>
+                          <li>Jenkins, Perforce, SOAP UI</li>
+                          <li>REST services</li>
+                          <li>Oracle SQL</li>
+                          <li>Internal frameworks and tools</li>
+                          <li>Java backend technologies</li>
+                        </ul>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div class="item">
+                  <img class="ui avatar image" src="/img/udg.jpg">
+                  <div class="content">
+                    <div class="header">Universidad de Guadalajara</div>
+                    <div class="description">
+                      <p>
+                        Software Development Engineer<br/>
+                        From August 2015 to November 2016<br/><br/>
+                        
+                        This was a huge integration project to make eleven legacy systems to work together using spring, <br/>
+                        a centralized database, and many other Java technologies. Since it was a small group of <br>
+                        programmers my main roles in the team were to work on the application architecture design, <br>
+                        technical leadership of the team, and development cycle.
+                        
+                        <br/><br/>
+                        <b>Key aspects</b>
+                        <ul>
+                          <li>Java application development/testing/deployment/support cycle</li>
+                          <li>Application architecture design</li>
+                          <li>Technical leadership of a small group of programmers</li>
+                          <li>Implementation of development best practices and tools</li>
+                        </ul>
+                        
+                        <b>Technologies used</b>
+                        <ul>
+                          <li>Spring boot, Spring security, Spring Data, Spring Rest</li>
+                          <li>Gitlab, Travis, Scrum</li>
+                          <li>MongoDB, PostgreSQL</li>
+                          <li>Web technologies and CSS frameworks (Bootstrap and Semantic UI)</li>
+                          <li>Java backend technologies</li>
+                        </ul>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div class="item">
+                  <img class="ui avatar image" src="/img/gob_jal.png">
+                  <div class="content">
+                    <div class="header">Gobierno del Estado de Jalisco</div>
+                    <div class="description">
+                      <p>
+                        Jr. Software Development Engineer<br/>
+                        From October 2013 to August 2015<br/><br/>
+                        
+                        At this project I worked mainly on development of internal applications and software used by <br/> 
+                        the local state goverment but also on citizen-used projects (e.g. driver licence booking system). <br/>
+                        Most of the software in state goverment is self-developed on that IT divison.<br/><br/>
+                        
+                        <b>Key aspects</b>
+                        <ul>
+                          <li>Java application development/testing/deployment/support cycle</li>
+                          <li>Migration and integration of legacy goverment systems</li>
+                          <li>SQL database design for internal applications</li>
+                        </ul>
+                        
+                        <b>Technologies used</b>
+                        <ul>
+                          <li>Java web development using J2EE, Spring, Servlets, JMS, multithreading, JPA</li>
+                          <li>Web technologies such as Javascript, JQuery, CSS, template and design css frameworks, REST and WSDL services</li>
+                          <li>SQL database technologies such as MySQL and PostgreSQL</li>
+                        </ul>
+                      </p>
+                      <br/><br/>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="ui segment">
+              <h3 class = "ui dividing header">Technical Skills</h3>
+              <ul>
+                <li>Java SE6 certified programmer</li>
+                <li>Experience on java web project development and design using multiple frameworks</li>
+                <li>Experience on integration systems and strategies</li>
+                <li>Knowledge of multiple front-end frameworks and technologies</li>
+                <li>Linux skills as console commands and basic shell scripting</li>
+                <li>Programing languages: Java, C, Python, PHP</li>
+                <li>Database scripting languages: SQL, and some none-SQL</li>
+                <li>Database development</li>
+                <li>English speaking with a GESE 6 certification</li>
+                <li>Experience using version control systems</li>
+                <li>REST, WSDL webservices</li>
+                <li>J2EE servlets and Spring web java frameworks</li>
+                <li>HTML5, Javascript, JQuery web technologies</li>
+                <li>UI Frameworks Thymeleaf, SemanticUI, Bootstrap</li>
+                <li>MongoDB, OracleSQL server, MySQL, PostgreSQL, Hibernate, Design Patterns</li>
+                <li>Git, Perforce</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      
+    </div>
+  	<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+  </body>
+</html>
+
+
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+    <link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.3.1/semantic.css" />
+    
+    <title>Finance</title>
+  </head>
+  <body>
+    <p></p>
+    <div class="ui fluid container">
+      <div class="ui grid">
+        <div class="row">
+          <div class="one wide column"></div>
+          
+          <div class="two wide column">
+              <div class="ui vertical fluid menu">
+                <div class="item">
+    <div class="ui input"><input type="text" placeholder="Search..."></div>
+  </div>
+  <div class="item">
+    Home
+    <div class="menu">
+      <a class="active item">Search</a>
+      <a class="item">Add</a>
+      <a class="item">Remove</a>
+    </div>
+  </div>
+  <a class="item">
+    <i class="grid layout icon"></i> Browse
+  </a>
+  <a class="item">
+    Messages
+  </a>
+  <div class="ui dropdown item">
+    More
+    <i class="dropdown icon"></i>
+    <div class="menu">
+      <a class="item"><i class="edit icon"></i> Edit Profile</a>
+      <a class="item"><i class="globe icon"></i> Choose Language</a>
+      <a class="item"><i class="settings icon"></i> Account Settings</a>
+    </div>
+  </div>
+</div>
+                </div>
+                <div class="eleven wide column">
+                    <table class="ui celled compact striped table">
+  <thead>
+    <tr><th colspan="3">
+      Git Repository
+    </th>
+  </tr></thead>
+  <tbody>
+    <tr>
+      <td class="collapsing">
+        <i class="folder icon"></i> node_modules
+      </td>
+      <td>Initial commit</td>
+      <td class="right aligned collapsing">10 hours ago</td>
+    </tr>
+    <tr>
+      <td>
+        <i class="folder icon"></i> test
+      </td>
+      <td>Initial commit</td>
+      <td class="right aligned">10 hours ago</td>
+    </tr>
+    <tr>
+      <td>
+        <i class="folder icon"></i> build
+      </td>
+      <td>Initial commit</td>
+      <td class="right aligned">10 hours ago</td>
+    </tr>
+    <tr>
+      <td>
+        <i class="file outline icon"></i> package.json
+      </td>
+      <td>Initial commit</td>
+      <td class="right aligned">10 hours ago</td>
+    </tr>
+    <tr>
+      <td>
+        <i class="file outline icon"></i> Gruntfile.js
+      </td>
+      <td>Initial commit</td>
+      <td class="right aligned">10 hours ago</td>
+    </tr>
+  </tbody>
+</table>
+            </div>
+            </div>
+        </div>
+    </div>
+    
+    
+    <div class="ui top attached menu">
+      <div class="ui item">
+        <a href="/"><h3 class="ui header">Wissen</h3></a>
+      </div>
+      <div class="ui right item" id="authuseritem" onclick="showAuthModal('menuButton')">
+        <i class="large user circle outline icon"></i> <span id="authuser">Anonymous</span>
+      </div>
+    </div>
+    
+    <div class="ui container">
+      <h1>Wissen</h1>
+    </div>
+    
+    
+    
+    <div id="container"></div>
+    
+    <div class="ui modal" id="authmod">
+      <i class="close icon"></i>
+      <div class="header">Authentication stage</div>
+      <div class="content">
+        <div class="ui icon message">
+          <i class="id badge icon"></i>
+          <div class="content">
+            <div class="header">Hi! Stranger</div>
+            <p id="usageNotex">
+              We have noticed that you are not logged in. This
+              can be an issue if you try to access some areas 
+              of the site that are not allowed to unidentified 
+              users. So in order to continue, please log in.
+            </p>
+            <p id="welcomeNotex">
+              Welcome to wissen, please provide your credentials.
+            </p>
+          </div>
+        </div>
+        <div class="ui hidden negative message" id="wrongcredentials">
+          <i class="close icon"></i>
+          <div class="header">
+            Wrong credentials
+          </div>
+        </div>
+        <form class="ui form">
+          <div class="field">
+            <label>User</label>
+            <input type="text" id="user" name="user"/>
+          </div>
+          <div class="field">
+            <label>Password</label>
+            <input type="password" id="passwd" name="passwd"/>
+          </div>
+          <div class="ui two buttons">
+            <button class="ui button" type="button" onclick="authenticate()">Login</button>
+            <div class="or"></div>
+            <button class="ui button" type="button" id="tgrm">Register</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    
+    <div class="ui modal" id="regmod">
+      <i class="close icon"></i>
+      <div class="header">Register</div>
+      
+      <div class="content">
+        <div class="ui hidden negative message" id="regerror">
+          <i class="close icon"></i>
+          <div class="header">
+            <span id="regerrormessage"></span>
+          </div>
+        </div>
+        <form class="ui form">
+          <div class="field">
+            <label>Username</label>
+            <input type="text" id="usernamereg" name="usernamereg" title="Max 15 characters/valid characters A-Z a-z 0-9 and _" pattern="[A-Za-z0-9_]{5,15}"/>
+          </div>
+          <div class="field">
+            <label>Email</label>
+            <input type="email" id="emailreg" name="emailreg"/>
+          </div>
+          <div class="field">
+            <label>Password</label>
+            <input type="password" id="passwdreg" name="passwdreg"/>
+          </div>
+          <div class="field">
+            <label>Password confirmation</label>
+            <input type="password" id="passwdregconf" name="passwdregconf"/>
+          </div>
+          <button class="ui fluid button" >Register</button>
+        </form>
+      </div>
+    </div>
+	
+	<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+  </body>
+</html>
+
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+  </head>
+  <body>
+  
+    <th:block th:fragment="content">
+    <div class="ui modal" id="authmod">
+      <i class="close icon"></i>
+      <div class="header">Authentication stage</div>
+      <div class="content">
+        <div class="ui icon message">
+          <i class="id badge icon"></i>
+          <div class="content">
+            <div class="header">Hi! Stranger</div>
+            <p id="usageNotex">
+              We have noticed that you are not logged in. This
+              can be an issue if you try to access some areas 
+              of the site that are not allowed to unidentified 
+              users. So in order to continue, please log in.
+            </p>
+            <p id="welcomeNotex">
+              Welcome to wissen, please provide your credentials.
+            </p>
+          </div>
+        </div>
+        <div class="ui hidden negative message" id="wrongcredentials">
+          <i class="close icon"></i>
+          <div class="header">
+            Wrong credentials
+          </div>
+        </div>
+        <form class="ui form">
+          <div class="field">
+            <label>User</label>
+            <input type="text" id="user" name="user"/>
+          </div>
+          <div class="field">
+            <label>Password</label>
+            <input type="password" id="passwd" name="passwd"/>
+          </div>
+          <div class="ui two buttons">
+            <button class="ui button" type="button" onclick="authenticate()">Login</button>
+            <div class="or"></div>
+            <button class="ui button" type="button" id="tgrm">Register</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    </th:block>
+    
+  </body>
+</html>
+
+
+
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+  </head>
+  <body>
+    
+  
+    <th:block th:fragment="index">
+    <div class="ui container">
+    
+      
+      <div class="ui stackable centered grid" id="maingrid">
+        <div class="eight wide column">
+          <div class="ui icon info message" id="messagenoauthy">
+            <i class="sticky note outline icon"></i>
+            <div class="content">
+              <div class="header">Welcome to wissen</div>
+              <p>A spring boot application with no sense.</p>
+              <p>This is just a silly message not to present an empty screen to the newcomers.</p>
+            </div>
+          </div>
+          <div class="ui icon warning message" id="messagenoauthx">
+            <i class="warning sign icon"></i>
+            <div class="content">
+              <div class="header">This site is still under development!</div>
+              <p>Everything related to the system and its development can be tracked on the <a href="https://github.com/seiferxx/wissen/">github page</a>.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="ui stackable centered grid hiddenf" id="maingridauth">
+        <div class="five wide column">
+          <p></p>
+          <div class="ui small indicating progress">
+            <div class="bar"></div>
+          	<div class="label">Today's progress</div>
+          </div>
+        </div>
+        <div class="eleven wide column">
+          <p></p>
+		  <div class="ui two column stackable grid">
+		    <div class="stretched row" id="xtasks">
+		    </div>
+		  </div> 
+        </div>
+      </div>
+    </div>
+    </th:block>
+    
+  </body>
+</html>
+
+
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+  </head>
+  <body>
+    <div th:fragment="indexjs">
+    <script src="/js/index.js"></script>
+    </div>
+    
+    <div th:fragment="expensesjs">
+    <script src="/js/expenses.js"></script>
+    </div>
+    
+    <div th:fragment="dashboardjs">
+    <script src="/js/dashboard.js"></script>
+    </div>
+
+  </body>
+</html>
+
+
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+  </head>
+  <body>
+  
+    <th:block th:fragment="content">
+    <div id="maincontainer" class="ui container">
+      <h1>Goals</h1>
+      <ul id="goallist"></ul>
+      <form>
+        <fieldset>
+          <legend>Create new goal</legend>
+          <label>Goal</label>
+          <input type="text" id="goaltitle"/>
+        </fieldset>
+        <br/>
+        <button onclick="prepareGoalData()">Submit</button>
+      </form>
+    </div>
+    </th:block>
+
+  </body>
+</html>
+
+
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+    <link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.3.1/semantic.css" />
+    <link rel="stylesheet" type="text/css" href="/css/wissen.css" />
+    <title>Wissen</title>
+  </head>
+  <body>
+  Something is really wrong
+  </body>
+</html>
+
+
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+  </head>
+  <body>
+  
+    <th:block th:fragment="content">
+    <div class="ui container">
+      <div class="ui stackable grid">
+        
+        <div class="row">
+          
+          <div class="ten wide column">
+           <p></p>
+            <h1 class="ui center aligned header">
+              <i class="chart bar outline icon"></i>
+              <div class="content">Expenses report December 2018</div>
+            </h1>
+          </div>
+          
+          <div class="six wide column">
+            <div class="ui yellow center aligned segment" id="balanceseg">
+              <div class="ui yellow small statistic" id="balancest">
+                <div class="value" id="balanceval">
+                  0.00
+                </div>
+                <div class="label">Balance MXN</div>
+              </div>
+            </div>
+    	  </div>
+    	</div>
+    	
+    	<div class="row">
+    	  
+    	  <div class="four wide column">
+    	  
+    	    <div class="ui icon fluid buttons mobile hidden">
+    	      <button class="ui button" onclick="toggleNewExpenseModal()"><i class="plus circle icon"></i></button>
+    	      <button class="ui button"><i class="calendar alternate outline icon"></i></button>
+    	      <button class="ui button"><i class="download icon"></i></button>
+    	    </div>
+    	    
+    	    <div class="ui teal center aligned segment" id="banksegment">
+    	      <h3 class="ui header"> <i class="money bill alternate outline icon"></i>Bank account</h3>
+    	      <p><b id="bankaccount">-</b></p>
+    	    </div>
+    	  </div>
+    	  
+    	  <div class="twelve wide column">
+    	    <table class="ui striped compact table">
+    	      <thead>
+    	        <tr>
+    	          <th colspan="3">Expenses</th>
+    	        </tr>
+    	      </thead>
+    	      <tbody id="maintable">
+    	      
+    	      </tbody>
+    	    </table>
+    	  </div>
+    	</div>
+    	
+      </div>
+    </div>
+    
+    <div class="ui basic modal" id="bankmodal">
+      <div class="ui icon header">
+        <i class="money bill alternate outline icon"></i>
+        Bank account
+      </div>
+      <div class="content">
+        <form class="ui form">
+          <div class="field">
+            <label style="color: white;">Bank account balance</label>
+            <input type="number" name="bankbalance" id="bankbalance">
+          </div>
+        </form>
+      </div>
+      <div class="actions">
+        <div class="ui green inverted button" onclick="registerBankAccount()">
+          <i class="checkmark icon"></i> Submit
+        </div>
+        <div class="ui red basic cancel inverted button">
+          <i class="remove icon"></i> Cancel
+        </div>
+      </div>
+    </div>
+    
+    <div class="ui modal" id="expensemod">
+      <i class="close icon"></i>
+      <div class="header">Register an expense</div>
+      <div class="content">
+        <form class="ui form">
+          <div class="inline fields">
+            <div class="ten wide field">
+              <label>Description</label>
+              <input type="text" id="expdesc" name="expdesc"/>
+            </div>
+            <div class="six wide field">
+              <label>Amount</label>
+              <input type="number" id="expamount" name="expamount"/>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+    
+    <button class="ui mobile only circular teal big icon button floatxbutton"><i class="icon bars"></i></button>
+    <br/>
+    <br/>
+    <br/>
+    <br/>
+    </th:block>
+
+  </body>
+</html>
+
+
+
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+  </head>
+  <body>
+  
+    <th:block th:fragment="content">
+    <div class="ui container">
+    
+      <div class="ui segment">
+        <h2 class="ui center aligned icon header">
+          <i class="circular chess rook icon"></i>
+          Wissen
+        </h2>
+      </div>
+      
+    </div>
+    </th:block>
+
+  </body>
+</html>
+
+
+
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+    <link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.3.1/semantic.css" />
+    <link rel="stylesheet" type="text/css" href="/css/wissen.css" />
+    <title>Wissen</title>
+  </head>
+  <body>
+  
+    <th:block th:include="page_menu :: content"></th:block>
+    
+    <th:block th:include="${contentSource} :: ${contentFragment}"></th:block>
+    
+    <th:block th:include="auth_modal :: content"></th:block>
+    
+    <th:block th:include="register_modal :: content"></th:block>
+    
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.3.1/semantic.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-cookie/1.4.1/jquery.cookie.js"></script>
+    <script src="/js/utils.js"></script>
+    <script src="/js/uiux.js"></script>
+    <script src="/js/md5.js"></script>
+    <th:block th:include="${customjsSource} :: ${customjsFragment}"></th:block>
+    <script src="/js/wissen.js"></script>
+    
+    
+  
+  </body>
+</html>
+
+
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+  </head>
+  <body>
+  
+    <th:block th:fragment="content">
+    <div class="ui top attached menu">
+      <div class="ui item">
+        <a href="/"><h3 class="ui header">Wissen</h3></a>
+      </div>
+      <div class="ui right item" id="authuseritem" onclick="showAuthModal('menuButton')">
+        <i class="large user circle outline icon"></i> <span id="authuser">Anonymous</span>
+      </div>
+    </div>
+    </th:block>
+    
+  </body>
+</html>
+
+
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+  </head>
+  <body>
+  
+    <th:block th:fragment="content">
+    <div class="ui modal" id="regmod">
+      <i class="close icon"></i>
+      <div class="header">Register</div>
+      
+      <div class="content">
+        <div class="ui hidden negative message" id="regerror">
+          <i class="close icon"></i>
+          <div class="header">
+            <span id="regerrormessage"></span>
+          </div>
+        </div>
+        <form class="ui form">
+          <div class="field">
+            <label>Username</label>
+            <input type="text" id="usernamereg" name="usernamereg" title="Max 15 characters/valid characters A-Z a-z 0-9 and _" pattern="[A-Za-z0-9_]{5,15}"/>
+          </div>
+          <div class="field">
+            <label>Email</label>
+            <input type="email" id="emailreg" name="emailreg"/>
+          </div>
+          <div class="field">
+            <label>Password</label>
+            <input type="password" id="passwdreg" name="passwdreg"/>
+          </div>
+          <div class="field">
+            <label>Password confirmation</label>
+            <input type="password" id="passwdregconf" name="passwdregconf"/>
+          </div>
+          <button class="ui fluid button" type="submit">Register</button>
+        </form>
+      </div>
+    </div>
+    </th:block>
+
+  </body>
+</html>
+
+let icon;
+		
+		if(this.props.priority === '0'){
+			icon = 	;
+		} else if (this.props.priority === '1'){
+			icon = 	<i className='id flag checkered yellow icon' />;
+		} else if (this.props.priority === '2'){
+			icon = 	<i className='id flag checkered green icon' />;
+		} else if (this.props.priority === '3'){
+			icon = 	<i className='id flag checkered blue icon' />;
+		} else {
+			icon = 	<i className='id flag checkered purple icon' />;
+		}
+		
+
+showAuthModal(){
+		this.
+	}
+
+	
